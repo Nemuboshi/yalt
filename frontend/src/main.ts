@@ -214,10 +214,10 @@ function drawShell() {
 
 function fillLanguageSelects() {
   const languageOptions = languages.map((language) =>
-    `<option value="${esc(language.code)}">${esc(language.name)}</option>`).join("");
+    `<option value="${esc(language.code)}" data-name="${esc(language.name)}">${esc(language.name)}</option>`).join("");
   const source = document.querySelector<HTMLSelectElement>("#source")!;
   const target = document.querySelector<HTMLSelectElement>("#target")!;
-  source.innerHTML = `<option value="auto">Detect language</option>${languageOptions}`;
+  source.innerHTML = `<option value="auto" data-name="Detect language">Detect language</option>${languageOptions}`;
   target.innerHTML = languageOptions;
   renderSourceSelection();
   renderTargetSelection();
@@ -227,6 +227,11 @@ function renderSourceSelection() {
   const source = document.querySelector<HTMLSelectElement>("#source");
   if (!source) return;
   source.value = selectedSource === "auto" ? autoDetectedSource || "auto" : selectedSource;
+  const detected = selectedSource === "auto" ? autoDetectedSource : "";
+  for (const option of Array.from(source.options)) {
+    const name = option.dataset.name ?? option.textContent ?? "";
+    option.textContent = option.value === detected ? `${name} (Auto-detected)` : name;
+  }
 }
 
 function renderTargetSelection() {

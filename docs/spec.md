@@ -114,6 +114,10 @@ Keep animation limited to a short page entrance and an activity indicator.
 Obey reduced-motion settings.
 
 The source selector provides automatic detection and the language choices from the script.
+When a language is auto-detected, mark the selected option with the text
+"(Auto-detected)".
+Remove the mark when the user selects another option.
+Keep the option value as the language code.
 The target selector provides automatic selection and manual language choices.
 A manual target remains in effect until the user selects automatic mode.
 Do not overwrite that choice when the input changes.

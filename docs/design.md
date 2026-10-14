@@ -319,6 +319,11 @@ A `select` must hide the native appearance.
 Use one chevron from a CSS custom property.
 Style the option list with the control tokens.
 
+When the source language is auto-detected, append "(Auto-detected)" to the
+selected option text.
+Keep the option value as the language code.
+Remove the text when the user selects another option.
+
 The input editor and result editor use a larger 10 px group radius.
 The result editor remains read-only.
 
