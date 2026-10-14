@@ -319,6 +319,14 @@ A `select` must hide the native appearance.
 Use one chevron from a CSS custom property.
 Style the option list with the control tokens.
 
+Use `appearance: base-select` for the option list, inside an
+`@supports (appearance: base-select)` block.
+Keep the plain rules above the block as the fallback for older engines.
+The option list uses the group radius, the control background, and
+`--shadow-popover`.
+A checked option uses `--accent-tint` and the accent text color.
+Do not add a dependency for the option list.
+
 When the source language is auto-detected, append "(Auto-detected)" to the
 selected option text.
 Keep the option value as the language code.

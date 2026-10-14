@@ -31,6 +31,7 @@
   --success: #248a3d;
   --destructive: #ff3b30;
   --focus-ring: rgba(138, 90, 59, 0.45);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.16);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -67,6 +68,7 @@
     --success: #30d158;
     --destructive: #ff453a;
     --focus-ring: rgba(198, 156, 123, 0.55);
+    --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.36);
   }
 }
 
@@ -126,6 +128,44 @@ select {
 select option {
   background-color: var(--control-background-hover);
   color: var(--label);
+}
+
+/* Chromium 135+ styles the native option list. Older engines keep the native
+   popup, so the rules above stay as the fallback. */
+@supports (appearance: base-select) {
+  select,
+  select::picker(select) {
+    appearance: base-select;
+  }
+
+  select::picker-icon {
+    display: none;
+  }
+
+  select::picker(select) {
+    margin-top: var(--space-1);
+    padding: var(--space-1);
+    border: 1px solid var(--separator);
+    border-radius: var(--radius-group);
+    background: var(--control-background-hover);
+    box-shadow: var(--shadow-popover);
+  }
+
+  select option {
+    padding: 5px 9px;
+    border-radius: var(--radius-control);
+    background-color: transparent;
+  }
+
+  select option:hover,
+  select option:focus-visible {
+    background-color: var(--accent-tint);
+  }
+
+  select option:checked {
+    background-color: var(--accent-tint);
+    color: var(--accent);
+  }
 }
 
 [hidden] {
