@@ -366,12 +366,13 @@ impl App {
     ///
     /// The worker reports the terminal state, so the result stays consistent.
     pub fn stop_translation(&mut self) {
-        if let Some(active) = &self.active {
-            if self.state.status.is_active() && self.state.status != Status::Stopping {
-                self.state.status = Status::Stopping;
-                self.state.message = "Stopping".to_owned();
-                active.cancel.cancel();
-            }
+        if let Some(active) = &self.active
+            && self.state.status.is_active()
+            && self.state.status != Status::Stopping
+        {
+            self.state.status = Status::Stopping;
+            self.state.message = "Stopping".to_owned();
+            active.cancel.cancel();
         }
     }
 

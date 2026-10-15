@@ -2,7 +2,7 @@
 name = "yalt"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 description = "Translate text with OpenAI-compatible Chat Completions and Responses APIs"
 publish = false
 
@@ -16,6 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 dirs = "7.0.0"
+eframe = "0.36"
+egui = "0.36"
 lingua = "1.8"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "stream", "charset", "http2"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -24,3 +26,10 @@ tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+# Keep debug artifacts small: the dependency graph (74 language models plus
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
