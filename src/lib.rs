@@ -5,5 +5,6 @@
 //! depend on the GUI. The `ui`, `app`, and `platform` modules connect them to
 //! eframe.
 
+pub mod app;
 pub mod settings;
 pub mod translation;
