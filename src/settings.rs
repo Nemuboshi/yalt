@@ -328,6 +328,16 @@ pub struct SettingsStore {
     path: PathBuf,
 }
 
+impl LoadOutcome {
+    /// The settings that apply, whichever outcome this is.
+    pub fn settings(&self) -> &Settings {
+        match self {
+            Self::Loaded(settings) | Self::Fresh(settings) => settings,
+            Self::Recoverable { settings, .. } => settings,
+        }
+    }
+}
+
 impl SettingsStore {
     /// Store settings under the platform configuration directory.
     ///
@@ -372,6 +382,18 @@ impl SettingsStore {
                 settings: Settings::default(),
                 error,
             },
+        }
+    }
+
+    /// Load settings, using defaults when the file is missing or unreadable.
+    ///
+    /// For callers that need the values before the application exists, such as
+    /// deciding whether to create the window hidden. Use [`Self::load`] when
+    /// an unreadable file must be reported or retained.
+    pub fn load_settings(&self) -> Result<Settings, StoreError> {
+        match self.load() {
+            LoadOutcome::Loaded(settings) | LoadOutcome::Fresh(settings) => Ok(settings),
+            LoadOutcome::Recoverable { error, .. } => Err(error),
         }
     }
 
