@@ -263,16 +263,20 @@ Every control must have an accessible label and keyboard access. Keep output ava
 ## 11. Acceptance Criteria
 
 - [ ] Windows, macOS, and Linux builds preserve all current desktop features.
-- [ ] Both APIs work with streaming and buffered responses.
-- [ ] Manual selection, local detection, uncertainty, and automatic target rules behave as specified.
-- [ ] Stop and failures preserve copyable partial results with an incomplete label.
-- [ ] Navigation and tray hiding retain active translation state.
-- [ ] Settings drafts, validation, glossary import, and recovery preserve user data.
-- [ ] Existing Go-version settings remain untouched; fresh Rust settings use a separate directory.
-- [ ] The interface preserves the current visual identity with documented small refinements.
+- [x] Both APIs work with streaming and buffered responses.
+- [x] Manual selection, local detection, uncertainty, and automatic target rules behave as specified.
+- [x] Stop and failures preserve copyable partial results with an incomplete label.
+- [x] Navigation and tray hiding retain active translation state.
+- [x] Settings drafts, validation, glossary import, and recovery preserve user data.
+- [x] Existing Go-version settings remain untouched; fresh Rust settings use a separate directory.
+- [x] The interface preserves the current visual identity with documented small refinements.
 - [ ] Both themes, supported window sizes, and display scaling are usable.
 - [ ] International text, IME, keyboard navigation, clipboard, and accessibility are tested.
-- [ ] Tray failure cannot strand the application in a hidden state.
+- [x] Tray failure cannot strand the application in a hidden state.
 - [ ] Packaged applications pass native checks on all three platforms.
+
+Every unchecked item needs a macOS or Linux machine, or a clean environment.
+`docs/parity.md` records each one's status and the evidence behind it, so a
+partial result is not mistaken for a complete one.
 
 Implementation details, test scenarios, tooling requirements, and remaining release decisions are maintained in [plan.md](../plan.md).

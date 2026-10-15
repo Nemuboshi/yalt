@@ -28,18 +28,21 @@ tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "sync", "
 [dev-dependencies]
 tempfile = "3.27.0"
 
-# Keep debug artifacts small: the dependency graph (74 language models plus
+# Keep debug artifacts small. The dependency graph is large (the language
+# detector alone carries 74 models), and full debug info for all of it costs
+# more disk and link time than it is worth for dependencies we do not debug.
 [profile.dev]
 debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
 
+# The tray has no backend on Linux, so the crate is not built there at all:
+# both of its backends need either GTK with libappindicator or a session D-Bus
+# service, and neither can be assumed on a machine that must run regardless.
+# See `crate::tray` for the behavior when no tray is available.
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 tray-icon = "0.26.1"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1.34"

@@ -12,12 +12,27 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Check version
         shell: bash
@@ -30,41 +45,94 @@ jobs:
             echo "Invalid version: $RAW_VERSION. Use MAJOR.MINOR.PATCH." >&2
             exit 1
           fi
+          # The version comes from Cargo.toml, so the tag and the embedded
+          # version metadata can never disagree.
+          declared="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [[ "$version" != "$declared" ]]; then
+            echo "Requested $version but Cargo.toml declares $declared." >&2
+            exit 1
+          fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build frontend
-        working-directory: frontend
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
-          npm ci
-          npm run build
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libfontconfig1-dev
 
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Build application
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --locked --target ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCHIVE: ${{ matrix.archive }}
         run: |
           set -euo pipefail
-          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          wails build -platform windows/amd64 -clean -skipbindings -s \
-            -ldflags "-X main.version=v${VERSION} -X main.commit=${GITHUB_SHA} -X main.date=${date}"
-          mv build/bin/yalt.exe "build/bin/yalt-${VERSION}-windows-amd64.exe"
+          name="yalt-${VERSION}-${TARGET}"
+          mkdir -p "dist/${name}"
+          if [[ "$TARGET" == *windows* ]]; then
+            cp "target/${TARGET}/release/yalt.exe" "dist/${name}/"
+          else
+            cp "target/${TARGET}/release/yalt" "dist/${name}/"
+          fi
+          cp docs/spec.md "dist/${name}/"
+          cd dist
+          if [[ "$ARCHIVE" == "zip" ]]; then
+            7z a "${name}.zip" "${name}" >/dev/null
+          else
+            tar -czf "${name}.tar.gz" "${name}"
+          fi
+          rm -rf "${name}"
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v3
+      - uses: actions/upload-artifact@v5
+        with:
+          name: yalt-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Normalize version
+        shell: bash
+        env:
+          RAW_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # Accept the version with or without a leading "v"; the tag always
+          # carries one, so it is stripped here rather than at each use.
+          echo "VERSION=${RAW_VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v6
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
           name: v${{ env.VERSION }}
           generate_release_notes: true
-          files: build/bin/*.exe
+          files: dist/*

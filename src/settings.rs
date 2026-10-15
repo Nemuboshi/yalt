@@ -484,24 +484,25 @@ fn restrict_permissions(_file: &std::fs::File) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Documented settings paths for each platform, for build and support docs.
+/// Documented settings path for each platform, for build and support docs.
+///
+/// These are the paths the platform's own convention produces, so the table is
+/// the same on every build. Only the current platform's entry is the path this
+/// build actually uses; the others are what the same code produces there.
 pub fn documented_paths() -> Vec<(&'static str, String)> {
-    let base = dirs::config_dir();
-    let describe = |suffix: &str| {
-        base.as_ref()
-            .map(|dir| {
-                dir.join(suffix)
-                    .join(CONFIG_DIR)
-                    .join(SETTINGS_FILE)
-                    .display()
-                    .to_string()
-            })
-            .unwrap_or_else(|| "<unavailable>".to_owned())
+    // Each platform's `dirs::config_dir` equivalent.
+    const WINDOWS: &str = "%APPDATA%";
+    const MACOS: &str = "$HOME/Library/Application Support";
+    const LINUX: &str = "$XDG_CONFIG_HOME (or $HOME/.config)";
+
+    let join = |base: &str| {
+        let separator = if base.starts_with('%') { '\\' } else { '/' };
+        format!("{base}{separator}{CONFIG_DIR}{separator}{SETTINGS_FILE}")
     };
     vec![
-        ("Windows", describe("")),
-        ("macOS", describe("")),
-        ("Linux", describe("")),
+        ("Windows", join(WINDOWS)),
+        ("macOS", join(MACOS)),
+        ("Linux", join(LINUX)),
     ]
 }
 
@@ -858,6 +859,30 @@ mod tests {
         assert!(
             !path.replace('\\', "/").contains("/yalt/settings.json"),
             "settings path overlaps the Go application: {path}"
+        );
+    }
+
+    #[test]
+    fn the_documented_paths_name_all_three_platforms() {
+        let paths = documented_paths();
+        let names: Vec<&str> = paths.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["Windows", "macOS", "Linux"]);
+        for (name, path) in &paths {
+            assert!(path.contains(CONFIG_DIR), "{name} path: {path}");
+            assert!(path.ends_with(SETTINGS_FILE), "{name} path: {path}");
+            // Each entry must use its own platform's separator.
+            if *name == "Windows" {
+                assert!(path.contains('\\'), "{name} path: {path}");
+            } else {
+                assert!(!path.contains('\\'), "{name} path: {path}");
+            }
+        }
+        // The documented directory must be the one this build actually uses,
+        // so the table cannot drift from the code.
+        let actual = SettingsStore::new().unwrap();
+        assert!(
+            actual.path().display().to_string().contains(CONFIG_DIR),
+            "documented name does not match the store"
         );
     }
 

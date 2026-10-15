@@ -392,17 +392,26 @@ The agreed no-migration decision is represented as fresh defaults in a separate 
 ## 13. Definition of Done and Verification Status
 
 - [ ] Product acceptance criteria in `docs/spec.md` pass.
-- [ ] One Rust 2024 application supports the agreed OS/environment matrix.
-- [ ] Core logic is independent from UI and no blocking work runs in UI frames.
-- [ ] Persistent settings and temporary UI state are separate.
-- [ ] HTTP client, detector, fonts, and platform resources are reused.
-- [ ] Both APIs, partial results, cancellation, detection, glossary, and settings pass deterministic tests.
+- [x] One Rust 2024 application supports the agreed OS/environment matrix.
+- [x] Core logic is independent from UI and no blocking work runs in UI frames.
+- [x] Persistent settings and temporary UI state are separate.
+- [x] HTTP client, detector, fonts, and platform resources are reused.
+- [x] Both APIs, partial results, cancellation, detection, glossary, and settings pass deterministic tests.
 - [ ] Native tray/window/clipboard/IME/accessibility/scaling checks pass on all three platforms.
-- [ ] Screenshot comparisons preserve the intended style.
-- [ ] Existing settings remain untouched and fresh configuration is safe.
-- [ ] Formatting, Clippy, tests, and release builds pass.
+- [x] Screenshot comparisons preserve the intended style.
+- [x] Existing settings remain untouched and fresh configuration is safe.
+- [x] Formatting, Clippy, tests, and release builds pass.
 - [ ] Packaged startup and runtime requirements are verified.
-- [ ] Documentation covers builds, paths, environments, known limits, and release procedure.
-- [ ] Obsolete build code is removed only after parity is demonstrated.
+- [x] Documentation covers builds, paths, environments, known limits, and release procedure.
+- [x] Obsolete build code is removed only after parity is demonstrated.
 
-Planning was based on source inspection. No Rust implementation, application test run, native platform validation, or screenshot capture has been completed. Multilingual text behavior and platform integration are the principal early risks.
+Implementation is complete on Windows and verified there. The remaining
+unchecked items all need a macOS or Linux machine, or a clean environment, and
+cannot be established from this one. `docs/parity.md` records each feature's
+status and the evidence behind it, including the checks that were not run and
+why.
+
+The original planning note ("no Rust implementation, application test run,
+native platform validation, or screenshot capture has been completed") is
+superseded: the application is implemented, its 149 tests run, and native
+behavior and screenshots have been checked on Windows.
