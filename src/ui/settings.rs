@@ -15,6 +15,8 @@ pub struct SettingsView {
     pub draft: Option<Draft>,
     /// Text of the glossary import field.
     pub import_text: String,
+    /// Import failure shown in an informational dialog.
+    import_error: Option<String>,
 }
 
 /// Actions the settings view asks the application to perform.
@@ -31,12 +33,14 @@ impl SettingsView {
     pub fn open(&mut self, settings: &Settings) {
         self.draft = Some(Draft::new(settings));
         self.import_text.clear();
+        self.import_error = None;
     }
 
     /// Discard the draft.
     pub fn close(&mut self) {
         self.draft = None;
         self.import_text.clear();
+        self.import_error = None;
     }
 
     /// Whether a draft is open.
@@ -73,12 +77,14 @@ impl SettingsView {
                                 .selected_text(method_label(method))
                                 .width(220.0)
                                 .show_ui(ui, |ui| {
-                                    ui.selectable_value(
+                                    theme::selectable_value(
+                                        ui,
                                         &mut method,
                                         ApiMethod::ChatCompletions,
                                         "Chat Completions",
                                     );
-                                    ui.selectable_value(
+                                    theme::selectable_value(
+                                        ui,
                                         &mut method,
                                         ApiMethod::Responses,
                                         "OpenAI Responses",
@@ -178,7 +184,7 @@ impl SettingsView {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Glossary").color(colors.secondary));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button("+ Add term").clicked() {
+                            if theme::button(ui, "+ Add term").clicked() {
                                 draft.add_term();
                             }
                         });
@@ -220,8 +226,7 @@ impl SettingsView {
                                         .desired_width(width),
                                     );
                                     theme::text_edit_menu(ui, &target, &mut term.target, false);
-                                    if ui
-                                        .button("×")
+                                    if theme::button(ui, "×")
                                         .on_hover_text("Remove glossary term")
                                         .clicked()
                                     {
@@ -245,14 +250,14 @@ impl SettingsView {
                                 .desired_width(width),
                         );
                         theme::text_edit_menu(ui, &response, &mut self.import_text, false);
-                        if ui.button("Import").clicked() {
+                        if theme::button(ui, "Import").clicked() {
                             let json = self.import_text.clone();
                             match draft.import_glossary(&json) {
-                                Ok(()) => self.import_text.clear(),
-                                Err(message) => {
-                                    draft.feedback = message;
-                                    draft.feedback_is_error = true;
+                                Ok(()) => {
+                                    self.import_text.clear();
+                                    self.import_error = None;
                                 }
+                                Err(message) => self.import_error = Some(message),
                             }
                         }
                     });
@@ -284,13 +289,13 @@ impl SettingsView {
                 theme::message(ui, "settings-feedback", &draft.feedback, color);
                 ui.horizontal(|ui| {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if primary_button(ui, "Save settings", &colors).clicked() {
+                        if theme::primary_button(ui, "Save settings", true, &colors).clicked() {
                             action = Some(Action::Save);
                         }
-                        if ui.button("Cancel").clicked() {
+                        if theme::text_button(ui, "Cancel").clicked() {
                             action = Some(Action::Cancel);
                         }
-                        if ui.button("Restore defaults").clicked() {
+                        if theme::button(ui, "Restore defaults").clicked() {
                             draft.confirm_restore = true;
                         }
                     });
@@ -300,6 +305,29 @@ impl SettingsView {
                     confirm_restore(ui, draft, &colors);
                 }
             });
+        if let Some(message) = &self.import_error {
+            let mut open = true;
+            let mut dismiss = false;
+            egui::Window::new("Info")
+                .id(egui::Id::new("glossary-import-info"))
+                .frame(theme::dialog_frame(&colors))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ui.ctx(), |ui| {
+                    ui.set_width(320.0);
+                    ui.label("Could not import glossary JSON.");
+                    ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+                        ui.label(message);
+                    });
+                    ui.add_space(SPACE_3);
+                    dismiss = theme::primary_button(ui, "OK", true, &colors).clicked();
+                });
+            if !open || dismiss {
+                self.import_error = None;
+            }
+        }
         action
     }
 }
@@ -309,6 +337,7 @@ fn confirm_restore(ui: &mut Ui, draft: &mut Draft, colors: &theme::Palette) {
     let mut confirm = false;
     let mut cancel = false;
     egui::Window::new("Restore defaults?")
+        .frame(theme::dialog_frame(colors))
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -316,10 +345,10 @@ fn confirm_restore(ui: &mut Ui, draft: &mut Draft, colors: &theme::Palette) {
             ui.label("This replaces the settings in the form. Save settings to apply them.");
             ui.add_space(SPACE_3);
             ui.horizontal(|ui| {
-                if primary_button(ui, "Restore defaults", colors).clicked() {
+                if theme::primary_button(ui, "Restore defaults", true, colors).clicked() {
                     confirm = true;
                 }
-                if ui.button("Cancel").clicked() {
+                if theme::text_button(ui, "Cancel").clicked() {
                     cancel = true;
                 }
             });
@@ -336,15 +365,10 @@ fn confirm_restore(ui: &mut Ui, draft: &mut Draft, colors: &theme::Palette) {
 fn group(ui: &mut Ui, title: &str, colors: &theme::Palette, contents: impl FnOnce(&mut Ui)) {
     ui.label(RichText::new(title).font(theme::heading_text()));
     ui.add_space(SPACE_2);
-    egui::Frame::new()
-        .fill(colors.content)
-        .stroke(egui::Stroke::new(1.0, colors.separator))
-        .corner_radius(theme::RADIUS_GROUP)
-        .inner_margin(SPACE_3)
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            contents(ui);
-        });
+    theme::surface(colors).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        contents(ui);
+    });
 }
 
 /// Draw a labelled field.
@@ -362,15 +386,6 @@ fn method_label(method: ApiMethod) -> &'static str {
     }
 }
 
-/// The accent-filled primary action.
-fn primary_button(ui: &mut Ui, label: &str, colors: &theme::Palette) -> egui::Response {
-    ui.add(
-        egui::Button::new(RichText::new(label).color(colors.accent_label))
-            .fill(colors.accent)
-            .corner_radius(theme::RADIUS_CONTROL),
-    )
-}
-
 /// Message for a save failure.
 pub fn save_error_message(error: &ValidationError) -> String {
     error.to_string()
@@ -379,6 +394,72 @@ pub fn save_error_message(error: &ValidationError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_json_opens_info_without_bottom_error_feedback() {
+        let ctx = egui::Context::default();
+        theme::apply(&ctx);
+        let mut view = SettingsView::default();
+        view.open(&Settings::default());
+        view.import_text = "not json".into();
+        let mut render = |events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(760.0, 1800.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    view.ui(ui);
+                },
+            );
+            output.textures_delta.clear();
+            output
+        };
+        let output = render(Vec::new());
+        let import = output
+            .shapes
+            .iter()
+            .find_map(|shape| {
+                if let egui::epaint::Shape::Text(text) = &shape.shape
+                    && text.galley.text() == "Import"
+                {
+                    Some(text.pos + text.galley.size() / 2.0)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        render(vec![
+            egui::Event::PointerMoved(import),
+            egui::Event::PointerButton {
+                pos: import,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]);
+        render(vec![egui::Event::PointerButton {
+            pos: import,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        let output = render(Vec::new());
+        assert!(output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::epaint::Shape::Text(text)
+                if text.galley.text() == "Could not import glossary JSON.")
+        }));
+        assert!(view.import_error.is_some());
+        assert!(view.draft.as_ref().unwrap().feedback.is_empty());
+        assert!(!view.draft.as_ref().unwrap().feedback_is_error);
+        assert_eq!(view.import_text, "not json");
+        view.close();
+        assert!(view.import_error.is_none());
+    }
 
     #[test]
     fn oversized_content_does_not_expand_the_settings_form() {

@@ -5,7 +5,13 @@
 The native Rust implementation uses egui controls. The older HTML/Wails examples
 below are historical design references; these rules take precedence:
 
-- Use egui's default light colors while retaining the app's control shapes, borders, spacing, and layout. Do not apply the brown accent in light mode.
+- Follow the project-local [Smartisan egui skill](../.claude/skills/smartisan-egui/SKILL.md). This direction supersedes the historical macOS/brown palette and default-egui-light guidance.
+- Light mode uses a `#f5f5f5` page, white grouped surfaces, `#333333` body text, quiet gray secondary text, fine `#e2e2e2` borders, and muted blue primary actions and selection. Use restrained rounded gradients, shallow field wells, and subtle group shadows.
+- Dark mode is a local adaptation, using neutral charcoal surfaces and the same muted blue accent. The source kit does not define dark mode.
+- Keep the compact desktop geometry: 30-point controls, 13-point body/button text, 15-point editors, 6-point controls, 10-point groups, native window decorations, and the existing window sizing. Do not import mobile app bars or branding.
+- Primary and selected surfaces use separate gradients. Secondary buttons have quiet raised surfaces; unselected options and text actions are transparent at rest. Hover, press, disabled and keyboard focus remain distinct without changing geometry.
+- Decorate native egui widgets with rounded backgrounds behind their text, retaining keyboard, accessibility, and input behavior. Cache generated gradients; use exactly one outer editor border and paint focus around the bounded viewport.
+- Reference and attribution: [smartisan-ui-skill](https://github.com/lemonteaau/smartisan-ui-skill/tree/c11bbe67c8aa5cb10d9317e8b3662a5b42fc148b), adapted for desktop egui. Design values derive from Paix Chan's unofficial Smartisan OS UI Kit under CC BY 4.0; [license and changes](../.claude/skills/smartisan-egui/ATTRIBUTION.md). No source fonts, icons, or branding are bundled.
 - Keep the bottom status bar fixed in both views, with status text at the far left
   and a persistent Settings toggle at the far right. The toggle stays selected
   while Settings is open; toggling it off cancels the draft.
@@ -15,6 +21,10 @@ below are historical design references; these rules take precedence:
   Do not bundle or download XiHei. Its absence must not prevent building or running.
 - Component dimensions follow the layout and window size. Content overflow scrolls
   inside bounded viewports and must not expand controls or displace actions.
+
+### Repeatable visual preview
+
+`cargo run --example smartisan_preview -- preview.png` renders the real Translate view with isolated dummy settings and writes a GPU screenshot before exiting. Add `dark`, `settings`, `minimum`, or `scaled` to inspect dark appearance, Settings, the minimum viewport, or 125% UI zoom. The preview does not send translation requests or read saved application settings. Its shell is a lightweight harness; inspect the actual application separately for status-bar and notice composition.
 
 ## Purpose
 

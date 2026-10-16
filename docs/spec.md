@@ -49,7 +49,7 @@ Features of `call_api.py` that are absent from the desktop application are not i
 - Keep a fixed, non-resizable bottom status bar in both views. Status text starts at its far left; a Settings toggle stays at its far right.
 - The Settings toggle remains selected while Settings is open. Clicking it again returns to Translate and discards the unsaved draft, like Cancel.
 - Focused settings editors retain a visible outline, including the bounded multiline viewport.
-- Light mode uses egui's default light colors instead of the custom brown palette, while retaining the app's control shapes, borders, spacing, and layout.
+- Use the project-local Smartisan-inspired egui style: light gray page, white grouped surfaces, fine borders, subtle gradients and inset fields, muted blue primary actions and selection. Dark mode is a documented charcoal/blue adaptation. Preserve the compact desktop geometry and native interactions; `docs/design.md` defines the current overrides and attribution.
 - Prefer a locally installed LXGW Neo XiHei (Plus when available) for all interface text. Resolve missing characters through installed system fonts, then egui defaults. Never embed or download XiHei during builds or at runtime.
 - Keep the application name in the native title bar.
 - Keep the input above the output at every supported window width.
@@ -105,7 +105,11 @@ Distinguish Ready, Waiting, Receiving, Complete, Stopping, Stopped, and Failed s
 - Keep partial results copyable.
 - Show clipboard success or failure near Copy.
 - Keep output stable while text arrives; do not animate the layout per token.
-- Render provider output as plain text.
+- Default to Plain output, with a Plain / Markdown switch at the far left of the result action row and Copy result alone at the far right. The choice is temporary UI state and does not alter requests or output data.
+- Buttons retain their dimensions across idle, hovered, pressed, and selected states.
+- Markdown renders the accumulated result as streaming chunks arrive, inside the same bounded viewport. Incomplete Markdown may reformat as later chunks complete it.
+- Markdown strong emphasis has visibly heavier glyphs. With egui's color-only strong styling, synthesize weight using the preferred font without changing text size or layout.
+- Copy result always copies the original output text, including Markdown source when present. Markdown mode does not fetch remote images.
 - Do not announce every streamed token to screen readers.
 - Do not automatically retry a request after partial output.
 - An explicit new request starts a fresh result.
@@ -191,7 +195,7 @@ The request deadline covers the total request, including streaming.
 - Compare duplicate sources using the existing case-insensitive validation intent.
 - Preserve row order when constructing a prompt.
 - Validate imports before replacing the current draft glossary.
-- Preserve the existing glossary if import fails.
+- Preserve the existing glossary if import fails. Show JSON parsing and validation failures in a centered Info dialog with an OK action, rather than in the bottom feedback label.
 
 ## 7. Provider Contract
 
@@ -252,9 +256,9 @@ Linux support must document tested desktop environments, tray-host requirements,
 
 ## 10. Appearance, International Text, and Accessibility
 
-Preserve the existing compact macOS-inspired utility style across platforms:
+Use a compact Smartisan-inspired desktop utility style across platforms:
 
-- Brown accent, quiet surfaces, thin separators, restrained typography.
+- Muted blue accent, quiet gray and white surfaces, subtle depth, fine separators, restrained typography.
 - Light and dark appearance.
 - Consistent spacing based on a 4-point scale.
 - Approximately 6-point control rounding and 10-point editor/group rounding.

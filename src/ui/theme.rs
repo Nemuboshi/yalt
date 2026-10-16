@@ -74,66 +74,45 @@ pub struct Palette {
 
 /// The light appearance.
 pub const LIGHT: Palette = Palette {
-    window: Color32::from_rgb(0xf5, 0xf5, 0xf7),
-    content: Color32::from_rgb(0xff, 0xff, 0xff),
-    control: Color32::from_rgb(0xff, 0xff, 0xff),
-    control_hover: Color32::from_rgb(0xfa, 0xfa, 0xfc),
-    separator: Color32::from_rgb(0xd6, 0xd6, 0xdb),
-    label: Color32::from_rgb(0x1d, 0x1d, 0x1f),
-    secondary: Color32::from_rgb(0x6e, 0x6e, 0x73),
-    placeholder: Color32::from_rgb(0x8e, 0x8e, 0x93),
-    accent: Color32::from_rgb(144, 209, 255),
-    accent_hover: Color32::from_gray(220),
-    accent_pressed: Color32::from_gray(165),
-    accent_label: Color32::from_rgb(0, 83, 125),
-    success: Color32::from_rgb(0x24, 0x8a, 0x3d),
+    window: Color32::from_rgb(0xf5, 0xf5, 0xf5),
+    content: Color32::WHITE,
+    control: Color32::WHITE,
+    control_hover: Color32::from_rgb(0xf0, 0xf2, 0xf6),
+    separator: Color32::from_rgb(0xe2, 0xe2, 0xe2),
+    label: Color32::from_rgb(0x33, 0x33, 0x33),
+    secondary: Color32::from_rgb(0x7f, 0x7f, 0x7f),
+    placeholder: Color32::from_rgb(0x9d, 0x9d, 0x9d),
+    accent: Color32::from_rgb(0x5b, 0x87, 0xeb),
+    accent_hover: Color32::from_rgb(0x50, 0x79, 0xd9),
+    accent_pressed: Color32::from_rgb(0x47, 0x72, 0xe6),
+    accent_label: Color32::WHITE,
+    success: Color32::from_rgb(0x37, 0x78, 0x52),
     warning: Color32::from_rgb(0x9a, 0x67, 0x00),
-    destructive: Color32::from_rgb(0xff, 0x3b, 0x30),
+    destructive: Color32::from_rgb(0xc8, 0x35, 0x30),
 };
 
-/// The dark appearance.
+/// A desktop dark adaptation; the reference kit defines light mode only.
 pub const DARK: Palette = Palette {
-    window: Color32::from_rgb(0x1e, 0x1e, 0x1e),
-    content: Color32::from_rgb(0x26, 0x26, 0x28),
-    control: Color32::from_rgb(0x32, 0x32, 0x34),
-    control_hover: Color32::from_rgb(0x3e, 0x3e, 0x40),
-    separator: Color32::from_rgb(0x3a, 0x3a, 0x3c),
-    label: Color32::from_rgb(0xf5, 0xf5, 0xf7),
-    secondary: Color32::from_rgb(0x98, 0x98, 0x9d),
-    placeholder: Color32::from_rgb(0x8e, 0x8e, 0x93),
-    accent: Color32::from_rgb(0xc6, 0x9c, 0x7b),
-    accent_hover: Color32::from_rgb(0xd6, 0xb1, 0x92),
-    accent_pressed: Color32::from_rgb(0xe3, 0xc6, 0xac),
-    accent_label: Color32::from_rgb(0x1d, 0x1d, 0x1f),
-    success: Color32::from_rgb(0x30, 0xd1, 0x58),
-    warning: Color32::from_rgb(0xff, 0xd6, 0x0a),
-    destructive: Color32::from_rgb(0xff, 0x45, 0x3a),
+    window: Color32::from_rgb(0x22, 0x23, 0x25),
+    content: Color32::from_rgb(0x2b, 0x2c, 0x2f),
+    control: Color32::from_rgb(0x30, 0x31, 0x35),
+    control_hover: Color32::from_rgb(0x3a, 0x3e, 0x46),
+    separator: Color32::from_rgb(0x46, 0x48, 0x4d),
+    label: Color32::from_rgb(0xe5, 0xe5, 0xe7),
+    secondary: Color32::from_rgb(0xad, 0xaf, 0xb5),
+    placeholder: Color32::from_rgb(0x90, 0x93, 0x9b),
+    accent: Color32::from_rgb(0x5b, 0x87, 0xeb),
+    accent_hover: Color32::from_rgb(0x6c, 0x95, 0xef),
+    accent_pressed: Color32::from_rgb(0x47, 0x72, 0xd0),
+    accent_label: Color32::WHITE,
+    success: Color32::from_rgb(0x81, 0xc6, 0x98),
+    warning: Color32::from_rgb(0xda, 0xb8, 0x6c),
+    destructive: Color32::from_rgb(0xeb, 0x86, 0x80),
 };
 
 /// Select the palette for the current system appearance.
 pub fn palette(dark_mode: bool) -> Palette {
-    if dark_mode {
-        DARK
-    } else {
-        let visuals = egui::Visuals::light();
-        Palette {
-            window: visuals.panel_fill,
-            content: visuals.faint_bg_color,
-            control: visuals.extreme_bg_color,
-            control_hover: visuals.widgets.hovered.bg_fill,
-            separator: visuals.widgets.inactive.bg_stroke.color,
-            label: visuals.text_color(),
-            secondary: visuals.weak_text_color(),
-            placeholder: visuals.weak_text_color(),
-            accent: visuals.selection.bg_fill,
-            accent_hover: visuals.widgets.hovered.bg_fill,
-            accent_pressed: visuals.widgets.active.bg_fill,
-            accent_label: visuals.selection.stroke.color,
-            destructive: visuals.error_fg_color,
-            warning: visuals.warn_fg_color,
-            ..LIGHT
-        }
-    }
+    if dark_mode { DARK } else { LIGHT }
 }
 
 /// Editor and output text style.
@@ -151,7 +130,222 @@ pub fn caption_text() -> FontId {
     FontId::new(11.0, FontFamily::Proportional)
 }
 
-/// Apply the app's styling, using default light colors without resetting geometry.
+/// Quiet selectable options: transparent at rest, with hover and selection fills.
+/// Keep invisible border space reserved so interaction never changes dimensions.
+pub fn selectable_label(
+    ui: &mut egui::Ui,
+    selected: bool,
+    text: impl Into<egui::Atom<'static>>,
+) -> egui::Response {
+    decorated_button(ui, text, ButtonRole::Selectable(selected))
+}
+
+pub fn selectable_value<Value: PartialEq>(
+    ui: &mut egui::Ui,
+    current: &mut Value,
+    value: Value,
+    text: impl Into<egui::Atom<'static>>,
+) -> egui::Response {
+    let mut response = selectable_label(ui, *current == value, text);
+    if response.clicked() && *current != value {
+        *current = value;
+        response.mark_changed();
+    }
+    response
+}
+
+#[derive(Clone, Copy)]
+enum ButtonRole {
+    Primary,
+    Secondary,
+    Quiet,
+    Selectable(bool),
+}
+
+pub fn primary_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    enabled: bool,
+    _colors: &Palette,
+) -> egui::Response {
+    ui.add_enabled_ui(enabled, |ui| {
+        decorated_button(ui, label.to_owned(), ButtonRole::Primary)
+    })
+    .inner
+}
+
+pub fn button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    decorated_button(ui, label.to_owned(), ButtonRole::Secondary)
+}
+
+pub fn text_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    decorated_button(ui, label.to_owned(), ButtonRole::Quiet)
+}
+
+fn decorated_button(
+    ui: &mut egui::Ui,
+    text: impl Into<egui::Atom<'static>>,
+    role: ButtonRole,
+) -> egui::Response {
+    let colors = palette(ui.visuals().dark_mode);
+    let selected = matches!(role, ButtonRole::Selectable(true));
+    let primary = matches!(role, ButtonRole::Primary);
+    let background = ui.painter().add(egui::Shape::Noop);
+    let response = ui
+        .scope(|ui| {
+            let visuals = ui.visuals_mut();
+            visuals.override_text_color = Some(if selected || primary {
+                colors.accent_label
+            } else {
+                colors.label
+            });
+            for widget in [
+                &mut visuals.widgets.inactive,
+                &mut visuals.widgets.hovered,
+                &mut visuals.widgets.active,
+            ] {
+                widget.weak_bg_fill = Color32::TRANSPARENT;
+                widget.bg_stroke.color = Color32::TRANSPARENT;
+            }
+            visuals.selection.bg_fill = Color32::TRANSPARENT;
+            let button = egui::Button::new(text).frame_when_inactive(true);
+            let button = if let ButtonRole::Selectable(selected) = role {
+                button.selected(selected)
+            } else {
+                button
+            };
+            ui.add(button)
+        })
+        .inner;
+    let pressed = response.is_pointer_button_down_on();
+    let hovered = response.hovered();
+    let dark = ui.visuals().dark_mode;
+    let (top, bottom, border) = if primary {
+        if pressed {
+            (
+                colors.accent_pressed,
+                colors.accent_pressed,
+                Color32::from_rgb(0x2f, 0x54, 0xd7),
+            )
+        } else if hovered {
+            (
+                colors.accent_hover,
+                colors.accent,
+                Color32::from_rgb(0x3f, 0x68, 0xe2),
+            )
+        } else {
+            (
+                colors.accent,
+                Color32::from_rgb(0x58, 0x83, 0xeb),
+                Color32::from_rgb(0x3f, 0x68, 0xe2),
+            )
+        }
+    } else if selected {
+        (
+            Color32::from_rgb(0x48, 0x78, 0xf0),
+            Color32::from_rgb(0x69, 0x97, 0xf4),
+            Color32::from_rgb(0x3d, 0x6f, 0xee),
+        )
+    } else if pressed {
+        (colors.control_hover, colors.control, colors.separator)
+    } else if hovered {
+        (
+            colors.control_hover,
+            colors.control_hover,
+            Color32::TRANSPARENT,
+        )
+    } else if matches!(role, ButtonRole::Secondary) {
+        (
+            colors.control,
+            if dark {
+                colors.content
+            } else {
+                Color32::from_gray(252)
+            },
+            colors.separator,
+        )
+    } else {
+        (
+            Color32::TRANSPARENT,
+            Color32::TRANSPARENT,
+            Color32::TRANSPARENT,
+        )
+    };
+    if top != Color32::TRANSPARENT {
+        let shape = gradient_rect(
+            ui,
+            response.rect,
+            RADIUS_CONTROL,
+            top,
+            bottom,
+            Stroke::new(0.8, border),
+        );
+        ui.painter().set(background, shape);
+    }
+    paint_field_focus(ui, response.rect, response.has_focus());
+    response
+}
+
+/// Tiny generated gradients are retained by the context and reused across frames.
+fn gradient_rect(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    radius: u8,
+    top: Color32,
+    bottom: Color32,
+    stroke: Stroke,
+) -> egui::Shape {
+    let id = egui::Id::new(("smartisan-gradient", top, bottom));
+    let cached = ui
+        .ctx()
+        .data(|data| data.get_temp::<egui::TextureHandle>(id));
+    let texture = cached.unwrap_or_else(|| {
+        let pixels = (0..32)
+            .map(|index| {
+                let t = index as f32 / 31.0;
+                egui::lerp(egui::Rgba::from(top)..=egui::Rgba::from(bottom), t).into()
+            })
+            .collect();
+        let texture = ui.ctx().load_texture(
+            "smartisan-gradient",
+            egui::ColorImage::new([1, 32], pixels),
+            egui::TextureOptions::LINEAR,
+        );
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(id, texture.clone()));
+        texture
+    });
+    // egui 0.36 cannot tessellate a textured fill and untextured stroke into
+    // the same mesh. Separate shapes keep each texture's geometry independent.
+    let fill = egui::epaint::RectShape::filled(rect, radius, Color32::WHITE).with_texture(
+        texture.id(),
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+    );
+    egui::Shape::Vec(vec![
+        fill.into(),
+        egui::epaint::RectShape::stroke(rect, radius, stroke, egui::StrokeKind::Inside).into(),
+    ])
+}
+
+pub fn surface(colors: &Palette) -> egui::Frame {
+    egui::Frame::new()
+        .fill(colors.content)
+        .stroke(Stroke::new(0.8, colors.separator))
+        .corner_radius(RADIUS_GROUP)
+        .inner_margin(SPACE_3)
+        .shadow(egui::epaint::Shadow {
+            offset: [0, 2],
+            blur: 6,
+            spread: 0,
+            color: Color32::from_black_alpha(10),
+        })
+}
+
+pub fn dialog_frame(colors: &Palette) -> egui::Frame {
+    surface(colors).corner_radius(12).inner_margin(SPACE_4)
+}
+
+/// Apply Smartisan desktop styling to both system appearances.
 pub fn apply(ctx: &egui::Context) {
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let colors = palette(theme == egui::Theme::Dark);
@@ -185,7 +379,12 @@ fn apply_to(style: &mut egui::Style, colors: Palette) {
     let visuals = &mut style.visuals;
     visuals.override_text_color = Some(colors.label);
     visuals.panel_fill = colors.window;
-    visuals.window_fill = colors.window;
+    visuals.window_fill = colors.content;
+    visuals.window_corner_radius = CornerRadius::same(12);
+    visuals.menu_corner_radius = CornerRadius::same(RADIUS_CONTROL);
+    visuals.error_fg_color = colors.destructive;
+    visuals.warn_fg_color = colors.warning;
+    visuals.text_cursor.stroke = Stroke::new(1.5, colors.label);
     visuals.extreme_bg_color = colors.control;
     visuals.faint_bg_color = colors.content;
     visuals.window_stroke = Stroke::new(1.0, colors.separator);
@@ -261,9 +460,32 @@ pub fn field_edit<'a>(
 
 /// Settings fields retain a visible focus outline independent of selection colors.
 pub fn settings_edit(ui: &mut egui::Ui, edit: egui::TextEdit<'_>) -> egui::Response {
-    let response = text_edit(ui, edit);
+    let background = ui.painter().add(egui::Shape::Noop);
+    let response = text_edit(
+        ui,
+        edit.frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 4))),
+    );
+    paint_field_surface(ui, background, response.rect);
     paint_field_focus(ui, response.rect, response.has_focus());
     response
+}
+
+fn paint_field_surface(ui: &egui::Ui, background: egui::layers::ShapeIdx, rect: egui::Rect) {
+    let colors = palette(ui.visuals().dark_mode);
+    let top = if ui.visuals().dark_mode {
+        Color32::from_gray(42)
+    } else {
+        Color32::from_gray(248)
+    };
+    let shape = gradient_rect(
+        ui,
+        rect,
+        RADIUS_CONTROL,
+        top,
+        colors.control,
+        Stroke::new(0.8, colors.separator),
+    );
+    ui.painter().set(background, shape);
 }
 
 fn paint_field_focus(ui: &egui::Ui, rect: egui::Rect, focused: bool) {
@@ -292,7 +514,9 @@ pub fn message(
         .min_scrolled_width(0.0)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.add(egui::Label::new(egui::RichText::new(text).color(color)).extend());
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(text).color(color)).extend());
+            });
         });
 }
 
@@ -305,24 +529,33 @@ pub fn multiline_field(
     hint: &str,
 ) -> egui::Response {
     let height = ui.text_style_height(&TextStyle::Body) * rows as f32 + 2.0 * SPACE_1;
-    let scroll = egui::ScrollArea::vertical()
-        .id_salt(("multiline-field-scroll", &id))
-        .max_height(height)
-        .auto_shrink([false, false])
+    let background = ui.painter().add(egui::Shape::Noop);
+    let field = egui::Frame::new()
+        .corner_radius(RADIUS_CONTROL)
+        .inner_margin(SPACE_1)
         .show(ui, |ui| {
-            let response = text_edit(
-                ui,
-                egui::TextEdit::multiline(text)
-                    .id_salt(id)
-                    .desired_rows(rows)
-                    .desired_width(f32::INFINITY)
-                    .hint_text(hint),
-            );
-            text_edit_menu(ui, &response, text, false);
-            response
+            egui::ScrollArea::vertical()
+                .id_salt(("multiline-field-scroll", &id))
+                .max_height(height - 2.0 * SPACE_1)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let response = text_edit(
+                        ui,
+                        egui::TextEdit::multiline(text)
+                            .id_salt(id)
+                            .desired_rows(rows)
+                            .desired_width(f32::INFINITY)
+                            .frame(egui::Frame::NONE)
+                            .hint_text(hint),
+                    );
+                    text_edit_menu(ui, &response, text, false);
+                    response
+                })
+                .inner
         });
-    paint_field_focus(ui, scroll.inner_rect, scroll.inner.has_focus());
-    scroll.inner
+    paint_field_surface(ui, background, field.response.rect);
+    paint_field_focus(ui, field.response.rect, field.inner.has_focus());
+    field.inner
 }
 
 /// Show an editor without letting a secondary press move its selection.
@@ -483,6 +716,61 @@ pub fn palette_for(theme: egui::Theme) -> Palette {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decorated_controls_tessellate_without_mixing_textures_and_strokes() {
+        let ctx = egui::Context::default();
+        apply(&ctx);
+        let mut text = "Instructions".to_owned();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let _ = primary_button(ui, "Translate", true, &LIGHT);
+            let _ = selectable_label(ui, true, "Markdown");
+            settings_edit(ui, field_edit(&mut text, "rendered-field"));
+        });
+        output.textures_delta.clear();
+        let primitives = ctx.tessellate(output.shapes, output.pixels_per_point);
+        assert!(!primitives.is_empty());
+    }
+
+    #[test]
+    fn buttons_keep_their_size_when_hovered_or_pressed() {
+        for selected in [false, true] {
+            for label in ["Plain", "Markdown", "Settings", "Copy result", "Translate"] {
+                let ctx = egui::Context::default();
+                apply(&ctx);
+                let mut rect = egui::Rect::NOTHING;
+                let mut render = |events| {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| {
+                            rect = if label == "Copy result" {
+                                text_button(ui, label).rect
+                            } else if label == "Translate" {
+                                primary_button(ui, label, true, &LIGHT).rect
+                            } else {
+                                selectable_label(ui, selected, label).rect
+                            };
+                        },
+                    );
+                    output.textures_delta.clear();
+                    rect
+                };
+                let idle = render(Vec::new());
+                let hovered = render(vec![egui::Event::PointerMoved(idle.center())]);
+                let pressed = render(vec![egui::Event::PointerButton {
+                    pos: idle.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                }]);
+                assert_eq!(idle.size(), hovered.size(), "hovered {label}");
+                assert_eq!(idle.size(), pressed.size(), "pressed {label}");
+            }
+        }
+    }
 
     struct EditorProbe {
         ctx: egui::Context,
@@ -677,6 +965,73 @@ mod tests {
     }
 
     #[test]
+    fn messages_remain_visible_in_right_to_left_rows() {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(560.0, 100.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let _ = ui.button("Dismiss");
+                    message(ui, "save-notice", "Settings saved", Color32::BLACK);
+                });
+            },
+        );
+        output.textures_delta.clear();
+        let visible = output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::epaint::Shape::Text(text)
+                if text.galley.text() == "Settings saved"
+                && shape.clip_rect.intersects(egui::Rect::from_min_size(text.pos, text.galley.size())))
+        });
+        assert!(visible, "notice text is outside its clip rectangle");
+    }
+
+    #[test]
+    fn multiline_field_has_one_border_around_the_viewport() {
+        let ctx = egui::Context::default();
+        apply(&ctx);
+        let mut text = "Line\n".repeat(30);
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(560.0, 300.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                multiline_field(ui, &mut text, "instructions", 3, "");
+            },
+        );
+        output.textures_delta.clear();
+        fn collect_borders(shape: &egui::Shape, borders: &mut Vec<egui::Rect>) {
+            match shape {
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect_borders(shape, borders);
+                    }
+                }
+                egui::Shape::Rect(rect) if !rect.stroke.is_empty() => borders.push(rect.rect),
+                _ => {}
+            }
+        }
+        let mut borders = Vec::new();
+        for clipped in &output.shapes {
+            collect_borders(&clipped.shape, &mut borders);
+        }
+        assert_eq!(borders.len(), 1);
+        assert!(
+            borders[0].height() < 100.0,
+            "border follows the full document instead of the viewport"
+        );
+    }
+
+    #[test]
     fn focused_settings_field_paints_a_visible_outline() {
         for theme in [egui::Theme::Light, egui::Theme::Dark] {
             let ctx = egui::Context::default();
@@ -699,15 +1054,14 @@ mod tests {
     }
 
     #[test]
-    fn light_appearance_uses_default_visuals() {
+    fn smartisan_appearance_preserves_control_geometry_and_readable_selection() {
         let ctx = egui::Context::default();
         apply(&ctx);
         let actual = &ctx.style_of(egui::Theme::Light).visuals;
-        let expected = egui::Visuals::light();
-        assert_eq!(actual.selection.bg_fill, expected.selection.bg_fill);
-        assert_eq!(actual.selection.stroke, expected.selection.stroke);
-        assert_eq!(actual.panel_fill, expected.panel_fill);
-        assert_eq!(palette(false).accent, expected.selection.bg_fill);
+        assert_eq!(actual.selection.bg_fill, LIGHT.accent);
+        assert_eq!(actual.selection.stroke.color, Color32::WHITE);
+        assert_eq!(actual.panel_fill, Color32::from_rgb(0xf5, 0xf5, 0xf5));
+        assert_eq!(palette(false).accent, Color32::from_rgb(0x5b, 0x87, 0xeb));
         for widget in [
             actual.widgets.inactive,
             actual.widgets.hovered,

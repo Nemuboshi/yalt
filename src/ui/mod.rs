@@ -359,12 +359,16 @@ impl YaltApp {
         let Some(notice) = self.notice.clone() else {
             return;
         };
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(theme::SPACE_4);
-            if ui.button("Dismiss").clicked() {
-                self.notice = None;
-            }
-            theme::message(ui, "notice-message", &notice, colors.secondary);
+        theme::surface(colors).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if theme::text_button(ui, "Dismiss").clicked() {
+                    self.notice = None;
+                }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    theme::message(ui, "notice-message", &notice, colors.secondary);
+                });
+            });
         });
         ui.add_space(theme::SPACE_2);
     }
@@ -372,7 +376,7 @@ impl YaltApp {
 
 fn status_contents(ui: &mut egui::Ui, selected: bool, text: &str, color: egui::Color32) -> bool {
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let clicked = ui.selectable_label(selected, "Settings").clicked();
+        let clicked = theme::selectable_label(ui, selected, "Settings").clicked();
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             theme::message(ui, "status-message", text, color);
         });
@@ -457,6 +461,14 @@ impl eframe::App for YaltApp {
                     )),
             )
             .show(ui, |ui| {
+                let rect = ui
+                    .max_rect()
+                    .expand2(egui::vec2(theme::SPACE_4, theme::SPACE_2));
+                ui.painter().hline(
+                    rect.x_range(),
+                    rect.top(),
+                    egui::Stroke::new(1.0, colors.separator),
+                );
                 self.status_bar(ui, &colors);
             });
 

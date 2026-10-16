@@ -27,6 +27,7 @@
 - Support window resizing and display scaling.
 - Check keyboard navigation and text input.
 - Keep visual styles consistent.
+- For UI implementation and review, follow `.claude/skills/smartisan-egui/SKILL.md` and the current desktop overrides in `docs/design.md`.
 
 ## Tools and Skills
 
