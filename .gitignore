@@ -7,3 +7,5 @@
 !/build/windows/icon.ico
 *.exe
 /target/
+# Large binary assets are staged by build.rs, not committed.
+/assets/*.ttf
