@@ -3,9 +3,8 @@
 A desktop translator for OpenAI-compatible Chat Completions and Responses
 APIs. Rust 2024 with eframe/egui; runs on Windows, macOS, and Linux.
 
-This is a rewrite of an earlier Go/Wails application. It is a separate
-application: it has its own configuration directory and does not read, migrate,
-or modify the previous version's settings.
+The application has its own configuration directory and does not read, migrate,
+or modify the settings of any earlier version.
 
 ## Building
 
@@ -43,8 +42,8 @@ convention:
 | macOS | `$HOME/Library/Application Support/yalt-rust/settings.json` |
 | Linux | `$XDG_CONFIG_HOME/yalt-rust/settings.json` (or `$HOME/.config/...`) |
 
-The `yalt-rust` directory name is deliberate, so the previous Go application's
-`yalt` directory is never read or written.
+The `yalt-rust` directory name is deliberate, so an older application's `yalt`
+directory is never read or written.
 
 Writes are atomic: settings are written to a temporary file and then replace
 the previous file, so an interrupted save cannot leave a half-written file. A
@@ -130,7 +129,3 @@ and the version metadata compiled into the executable cannot disagree.
 | `docs/spec.md` | Product specification |
 | `plan.md` | Implementation plan and milestones |
 | `call_api.py` | Provider reference script, kept for protocol checks |
-| `*.go`, `frontend/`, `wails.json` | Previous implementation, kept for reference |
-
-The Go sources and the TypeScript frontend are retained for reference during
-the port. They are not built, and no workflow uses them.
