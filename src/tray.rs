@@ -143,11 +143,20 @@ impl Waker {
     }
 }
 
+/// The platform tray handle.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+type Backend = tray_icon::TrayIcon;
+
+/// Where no backend is compiled in, a handle cannot exist at all, so the
+/// type is uninhabited and only the error path of registration can run.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+type Backend = std::convert::Infallible;
+
 /// The registered tray icon, kept alive for as long as the tray is enabled.
 pub struct Tray {
     /// Dropping this removes the icon. Absent when registration failed or no
     /// backend exists.
-    backend: Option<tray_icon::TrayIcon>,
+    backend: Option<Backend>,
     /// Whether registration succeeded.
     registered: bool,
 }
@@ -225,7 +234,7 @@ fn build_backend(icon: Option<AppIcon>) -> Result<tray_icon::TrayIcon, String> {
 
 /// No backend is compiled in on this platform.
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn build_backend(_icon: Option<AppIcon>) -> Result<tray_icon::TrayIcon, String> {
+fn build_backend(_icon: Option<AppIcon>) -> Result<Backend, String> {
     Err("no tray backend is available on this platform".to_owned())
 }
 
