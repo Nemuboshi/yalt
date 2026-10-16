@@ -91,7 +91,8 @@ CI runs these on Windows, macOS, and Linux; see
 `.github/workflows/check.yml`.
 
 The test suite needs no network access or provider credentials: HTTP behavior
-is exercised against local fixtures.
+is exercised against local fixtures. Language detection runs locally through
+`whatlang`; nothing is sent to a provider to identify a language.
 
 ### What the tests do not cover
 

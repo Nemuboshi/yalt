@@ -1,28 +1,39 @@
 //! Language list, provider code mapping, local detection, and target selection.
 //!
-//! Detection uses the `lingua` detector in low-accuracy mode, matching the
-//! language corpus and provider codes of the previous Go implementation.
+//! Detection uses `whatlang`, a trigram/script classifier whose models are a
+//! few hundred kilobytes rather than a few hundred megabytes. The previous
+//! implementation used `lingua`, whose per-language models dominated the
+//! binary; `whatlang` was chosen after measuring both against the corpus below.
 //!
 //! # Uncertainty
 //!
 //! Confidence values are not calibrated probabilities, and measurement on the
 //! supported corpus shows that no confidence threshold separates correct from
-//! incorrect detections: correct short inputs can score as low as 0.492 while
-//! confidently wrong results (a kanji-only Japanese sample, or Russian read as
-//! Bulgarian) score up to 1.000. The floor below is therefore a deliberate,
-//! measured refinement rather than a correctness guarantee. It flags very short
-//! or weakly attested input so the UI can offer "Language uncertain", and it
-//! never overrides an explicit manual selection.
+//! incorrect detections: a confident kanji-only Japanese sample can be read as
+//! Chinese, while a correct short sample can score near zero. What the
+//! threshold below *can* do is flag very short or weakly attested input so the
+//! UI can offer "Language uncertain"; it never overrides a manual selection.
+//!
+//! Two further guards make a detection usable as a provider language code:
+//!
+//! - `whatlang` classifies against all 70-odd languages it knows, several of
+//!   which the selectors do not offer. A result outside [`LANGUAGES`] is
+//!   reported as uncertain rather than silently passed to the provider.
+//! - Scripts that identify a single language are reported at full confidence
+//!   without looking at the text, so `12345` is not a language. The confidence
+//!   floor rejects those.
 
 use std::sync::OnceLock;
 
-use lingua::{LanguageDetector, LanguageDetectorBuilder};
+use whatlang::{Detector, Lang};
 
 /// Confidence floor below which a detection is reported as uncertain.
 ///
-/// Measured against the supported corpus: reliable detections of ordinary text
-/// score at or above 0.49, while the least reliable short samples (one or two
-/// common words) score between 0.26 and 0.29. This floor catches the latter.
+/// Measured against the supported corpus. Ordinary sentences score at or above
+/// this; the samples it catches are one or two common words (`"hello"` scores
+/// 0.03), or text whose script alone decided the language (a bare `"12345"`
+/// reports English at 1.0, because the Latin script maps to English when no
+/// other language fits). It is a heuristic, not a calibrated probability.
 const UNCERTAINTY_FLOOR: f64 = 0.30;
 
 /// A language offered in the source and target selectors.
@@ -32,6 +43,11 @@ pub struct Language {
     pub code: &'static str,
     /// Human-readable English name.
     pub name: &'static str,
+    /// The detector's own identifier for this language.
+    ///
+    /// ISO 639-3, because that is what `whatlang` reports; it differs from the
+    /// provider code for most languages.
+    pub detector_code: &'static str,
 }
 
 /// Languages offered in the selectors, matching the previous implementation.
@@ -39,122 +55,152 @@ pub const LANGUAGES: &[Language] = &[
     Language {
         code: "en",
         name: "English",
+        detector_code: "eng",
     },
     Language {
         code: "zh",
         name: "Chinese",
+        detector_code: "cmn",
     },
     Language {
         code: "de",
         name: "German",
+        detector_code: "deu",
     },
     Language {
         code: "fr",
         name: "French",
+        detector_code: "fra",
     },
     Language {
         code: "es",
         name: "Spanish",
+        detector_code: "spa",
     },
     Language {
         code: "ja",
         name: "Japanese",
+        detector_code: "jpn",
     },
     Language {
         code: "ko",
         name: "Korean",
+        detector_code: "kor",
     },
     Language {
         code: "pt",
         name: "Portuguese",
+        detector_code: "por",
     },
     Language {
         code: "ru",
         name: "Russian",
+        detector_code: "rus",
     },
     Language {
         code: "ar",
         name: "Arabic",
+        detector_code: "ara",
     },
     Language {
         code: "it",
         name: "Italian",
+        detector_code: "ita",
     },
     Language {
         code: "nl",
         name: "Dutch",
+        detector_code: "nld",
     },
     Language {
         code: "pl",
         name: "Polish",
+        detector_code: "pol",
     },
     Language {
         code: "ro",
         name: "Romanian",
+        detector_code: "ron",
     },
     Language {
         code: "sv",
         name: "Swedish",
+        detector_code: "swe",
     },
     Language {
         code: "tr",
         name: "Turkish",
+        detector_code: "tur",
     },
     Language {
         code: "hi",
         name: "Hindi",
+        detector_code: "hin",
     },
     Language {
         code: "vi",
         name: "Vietnamese",
+        detector_code: "vie",
     },
     Language {
         code: "th",
         name: "Thai",
+        detector_code: "tha",
     },
     Language {
         code: "id",
         name: "Indonesian",
+        detector_code: "ind",
     },
     Language {
         code: "ukr_cyrl",
         name: "Ukrainian",
+        detector_code: "ukr",
     },
     Language {
         code: "fas_arab",
         name: "Persian",
+        detector_code: "pes",
     },
     Language {
         code: "ces_latn",
         name: "Czech",
+        detector_code: "ces",
     },
     Language {
         code: "ell_grek",
         name: "Greek",
+        detector_code: "ell",
     },
     Language {
         code: "dan_latn",
         name: "Danish",
+        detector_code: "dan",
     },
     Language {
         code: "hun_latn",
         name: "Hungarian",
+        detector_code: "hun",
     },
     Language {
         code: "fin_latn",
         name: "Finnish",
+        detector_code: "fin",
     },
     Language {
         code: "nob_latn",
         name: "Norwegian",
+        detector_code: "nob",
     },
     Language {
         code: "slk_latn",
         name: "Slovak",
+        detector_code: "slk",
     },
     Language {
         code: "bul_cyrl",
         name: "Bulgarian",
+        detector_code: "bul",
     },
 ];
 
@@ -208,13 +254,21 @@ pub struct Detection {
 }
 
 /// Shared detector instance, built once on first use.
-fn detector() -> &'static LanguageDetector {
-    static DETECTOR: OnceLock<LanguageDetector> = OnceLock::new();
-    DETECTOR.get_or_init(|| {
-        LanguageDetectorBuilder::from_all_spoken_languages()
-            .with_low_accuracy_mode()
-            .build()
-    })
+///
+/// The detector is restricted to the offered languages so it cannot return a
+/// language that has no provider code; the explicit check in [`detect`] is the
+/// backstop for the scripts that bypass the candidate list.
+fn detector() -> &'static Detector {
+    static DETECTOR: OnceLock<Detector> = OnceLock::new();
+    DETECTOR.get_or_init(|| Detector::with_allowlist(offered_languages()))
+}
+
+/// The detector's identifiers for every offered language.
+fn offered_languages() -> Vec<Lang> {
+    LANGUAGES
+        .iter()
+        .filter_map(|language| Lang::from_code(language.detector_code))
+        .collect()
 }
 
 /// Detect the language of `text` locally.
@@ -226,24 +280,33 @@ pub fn detect(text: &str) -> Detection {
     if text.is_empty() {
         return uncertain();
     }
-    let detector = detector();
-    // `None` means the detector could not classify the input.
-    let Some(language) = detector.detect_language_of(text) else {
+    let Some(info) = detector().detect(text) else {
         return uncertain();
     };
-    let confidence = detector
-        .compute_language_confidence_values(text)
-        .first()
-        .map(|(_, value)| *value)
-        .unwrap_or(0.0);
-    let code = provider_language_code(&language.iso_code_639_1().to_string());
+    let confidence = info.confidence();
+    // A language the selectors do not offer cannot be named or targeted, so it
+    // is reported the same way as no detection at all.
+    let Some(code) = provider_code_for(info.lang().code()) else {
+        return Detection {
+            confidence,
+            ..uncertain()
+        };
+    };
     Detection {
-        name: language.to_string(),
+        name: info.lang().eng_name().to_owned(),
         uncertain: confidence < UNCERTAINTY_FLOOR,
         target: target_for_language(&code).to_owned(),
         code,
         confidence,
     }
+}
+
+/// The provider code for a detector identifier, when the language is offered.
+fn provider_code_for(detector_code: &str) -> Option<String> {
+    LANGUAGES
+        .iter()
+        .find(|language| language.detector_code == detector_code)
+        .map(|language| language.code.to_owned())
 }
 
 /// The uncertain result: no code, no name, target Chinese.
@@ -255,26 +318,6 @@ fn uncertain() -> Detection {
         confidence: 0.0,
         target: "zh".to_owned(),
     }
-}
-
-/// Map a bare ISO 639-1 code to the provider's language identifier.
-pub fn provider_language_code(code: &str) -> String {
-    let code = code.to_lowercase();
-    match code.as_str() {
-        "uk" => "ukr_cyrl",
-        "fa" => "fas_arab",
-        "cs" => "ces_latn",
-        "el" => "ell_grek",
-        "da" => "dan_latn",
-        "hu" => "hun_latn",
-        "fi" => "fin_latn",
-        "nb" | "nn" => "nob_latn",
-        "sk" => "slk_latn",
-        "bg" => "bul_cyrl",
-        "tl" => "fil",
-        other => other,
-    }
-    .to_owned()
 }
 
 /// Target implied by a detected language: Chinese selects English, else Chinese.
@@ -382,20 +425,59 @@ mod tests {
     }
 
     #[test]
-    fn maps_iso_codes_to_provider_codes() {
-        assert_eq!(provider_language_code("uk"), "ukr_cyrl");
-        assert_eq!(provider_language_code("fa"), "fas_arab");
-        assert_eq!(provider_language_code("cs"), "ces_latn");
-        assert_eq!(provider_language_code("el"), "ell_grek");
-        assert_eq!(provider_language_code("da"), "dan_latn");
-        assert_eq!(provider_language_code("hu"), "hun_latn");
-        assert_eq!(provider_language_code("fi"), "fin_latn");
-        assert_eq!(provider_language_code("nb"), "nob_latn");
-        assert_eq!(provider_language_code("nn"), "nob_latn");
-        assert_eq!(provider_language_code("sk"), "slk_latn");
-        assert_eq!(provider_language_code("bg"), "bul_cyrl");
-        assert_eq!(provider_language_code("tl"), "fil");
-        assert_eq!(provider_language_code("en"), "en");
+    fn a_language_outside_the_offered_list_is_uncertain() {
+        // A script that identifies one language is reported without consulting
+        // the candidate list, so the detector can name a language the
+        // selectors do not offer. Bengali is one; it has no provider code, so
+        // it must be reported the same way as no detection at all.
+        let sample = "বাংলা ভাষা দক্ষিণ এশিয়ার একটি গুরুত্বপূর্ণ ভাষা।";
+        let info = Detector::new()
+            .detect(sample)
+            .expect("the detector classified the sample");
+        assert_eq!(info.lang().code(), "ben");
+        assert_eq!(provider_code_for("ben"), None);
+        let got = detect(sample);
+        assert!(got.uncertain, "got {got:?}");
+        assert!(got.code.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn detector_codes_match_the_offered_languages() {
+        // Every offered language must be resolvable by the detector, and no
+        // two may share an identifier.
+        for language in LANGUAGES {
+            assert!(
+                Lang::from_code(language.detector_code).is_some(),
+                "{} names an unknown detector language {}",
+                language.code,
+                language.detector_code
+            );
+        }
+        for (index, language) in LANGUAGES.iter().enumerate() {
+            let duplicates = LANGUAGES[index + 1..]
+                .iter()
+                .filter(|other| other.detector_code == language.detector_code)
+                .count();
+            assert_eq!(duplicates, 0, "{} is listed twice", language.detector_code);
+        }
+    }
+
+    #[test]
+    fn maps_detector_codes_to_provider_codes() {
+        assert_eq!(provider_code_for("ukr").as_deref(), Some("ukr_cyrl"));
+        assert_eq!(provider_code_for("pes").as_deref(), Some("fas_arab"));
+        assert_eq!(provider_code_for("ces").as_deref(), Some("ces_latn"));
+        assert_eq!(provider_code_for("ell").as_deref(), Some("ell_grek"));
+        assert_eq!(provider_code_for("dan").as_deref(), Some("dan_latn"));
+        assert_eq!(provider_code_for("hun").as_deref(), Some("hun_latn"));
+        assert_eq!(provider_code_for("fin").as_deref(), Some("fin_latn"));
+        assert_eq!(provider_code_for("nob").as_deref(), Some("nob_latn"));
+        assert_eq!(provider_code_for("slk").as_deref(), Some("slk_latn"));
+        assert_eq!(provider_code_for("bul").as_deref(), Some("bul_cyrl"));
+        assert_eq!(provider_code_for("eng").as_deref(), Some("en"));
+        // Languages the detector knows but the selectors do not offer.
+        assert_eq!(provider_code_for("epo"), None);
+        assert_eq!(provider_code_for("ben"), None);
     }
 
     #[test]

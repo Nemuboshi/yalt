@@ -64,15 +64,46 @@ platform or interaction not available here. **Not verified** — no evidence.
 
 ## Detector calibration
 
-The uncertainty floor (`UNCERTAINTY_FLOOR`, `src/translation/languages.rs`) was
-chosen from measurements rather than a conventional confidence threshold. No
-threshold separated correct from incorrect detections on the sample corpus: a
-correct `fr` detection scored 0.492 with a margin of 0.027, while a wrong
-kanji-only `ja` → `zh` detection scored 1.000.
+Detection uses `whatlang`. The uncertainty floor (`UNCERTAINTY_FLOOR`,
+`src/translation/languages.rs`) was chosen from measurements rather than a
+conventional confidence threshold. No threshold separated correct from
+incorrect detections: a confident kanji-only Japanese sample can be read as
+Chinese, while a correct short sample scores near zero.
 
 The floor therefore only flags short or weakly-attested input as uncertain. It
 never overrides a manual selection. It is documented in the source as a
 heuristic, not a calibrated probability.
+
+Two guards beyond the floor make a result usable as a provider code:
+
+- The detector is restricted to the offered languages, and a result with no
+  provider code is reported as uncertain. The restriction is not sufficient on
+  its own: scripts that identify a single language (Bengali, Thai, Greek,
+  Hangul, kana) are resolved without consulting the candidate list, so the
+  explicit check in `detect` is the backstop.
+- The floor rejects text whose script alone decided the language. A bare
+  `"12345"` is not a language, but a Latin-script classifier can only answer
+  with a Latin-script language.
+
+### Detector choice
+
+`lingua` was the first detector. Its per-language models dominated the binary:
+292 MB of a 295 MB build, and 146 MB of the 165 MB build after its cargo
+features were restricted to the 30 offered languages. Restricting the features
+also changed detector behavior, because the candidate set changes.
+
+`whatlang` replaced it: 0.6 MB linked, a 19.5 MB release binary, and better
+handling of short input — `"привет"` scores 0.10 and is correctly uncertain,
+where `lingua` scored 0.502 and asserted Russian. On the 32-sentence corpus
+covering every offered language, `whatlang` scores 30/32 and `lingua` 31/32;
+each misses one hard pair (`whatlang`: `ru` → `bg`; `lingua`: `nb` → `da`).
+
+`whichlang` was measured and rejected. It supports 16 languages, so 14 of the
+30 offered languages — Ukrainian, Persian, Czech, Greek, Danish, Hungarian,
+Finnish, Norwegian, Slovak, Bulgarian, Polish, Romanian, Thai, and Indonesian
+— have no code at all; on the corpus it scored 10/32. It also returns a bare
+`Lang` with no confidence, and answers `Eng`/`Ita`/`Fra` for empty, whitespace,
+and emoji input, so it cannot express "uncertain".
 
 ## Known limitations
 
@@ -86,6 +117,10 @@ heuristic, not a calibrated probability.
   tests pass; it does not establish native behavior.
 - **No live provider request has been made.** Fixtures prove protocol handling,
   not that a named model is currently served.
+- **The detector misses one hard pair.** Russian prose in the corpus is read as
+  Bulgarian (confidence 0.65, so not flagged uncertain). Ukrainian is read
+  correctly, so this is not a general Cyrillic problem; the previous detector
+  missed a different pair instead. A manual source selection is the remedy.
 - **The API key is stored in plaintext**, as before.
 
 ## Definition of done
