@@ -1,6 +1,6 @@
 //! The settings view: grouped fields editing a draft.
 
-use egui::{Align, Layout, RichText, ScrollArea, Ui};
+use eframe::egui::{self, Align, Layout, RichText, ScrollArea, Ui};
 
 use crate::settings::{Settings, ValidationError};
 use crate::translation::ApiMethod;

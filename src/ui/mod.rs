@@ -11,6 +11,8 @@ pub mod translate;
 
 use std::sync::Arc;
 
+use eframe::egui;
+
 use crate::app::{App, StartError, Status};
 use crate::settings::Settings;
 use crate::tray::{self, Command as TrayCommand};
@@ -529,7 +531,7 @@ fn restart_notice(settings: &Settings) -> String {
     }
 }
 
-use egui::RichText;
+use eframe::egui::RichText;
 
 #[cfg(test)]
 mod tests {

@@ -19,7 +19,7 @@
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use egui::IconData;
+use eframe::egui::IconData;
 
 /// A command raised by the tray menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

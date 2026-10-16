@@ -2,6 +2,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use eframe::egui;
+
 fn main() -> eframe::Result {
     // Whether the window may start hidden has to be decided before it is
     // created: a window created visible and hidden a frame later is briefly

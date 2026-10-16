@@ -1,6 +1,6 @@
 //! The translation view: language controls, input editor, and result.
 
-use egui::{Align, Layout, RichText, ScrollArea, TextEdit, Ui};
+use eframe::egui::{self, Align, Layout, RichText, ScrollArea, TextEdit, Ui};
 
 use crate::app::{App, StartError, Status};
 use crate::translation::languages;

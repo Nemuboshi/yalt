@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use egui::{FontData, FontDefinitions, FontFamily};
+use eframe::egui::{FontData, FontDefinitions, FontFamily};
 
 /// A writing system that needs its own fallback face.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,9 +233,9 @@ pub fn resolved_path(script: Script) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::FontId;
-    use egui::epaint::text::TextOptions;
-    use egui::text::Fonts;
+    use eframe::egui::FontId;
+    use eframe::egui::epaint::text::TextOptions;
+    use eframe::egui::text::Fonts;
 
     /// Sample text for each script, including the punctuation and jamo that
     /// appear in real translations.

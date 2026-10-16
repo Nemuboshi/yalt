@@ -4,7 +4,7 @@
 //! roles rather than raw colors. Both appearances are supported and follow the
 //! system preference.
 
-use egui::{Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle, Vec2};
+use eframe::egui::{self, Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle, Vec2};
 
 /// Spacing unit, in logical points.
 pub const SPACE_1: f32 = 4.0;
