@@ -30,6 +30,7 @@
 
 ## Tools and Skills
 
+- Use rg for searching file contents; do not use grep.
 - Use Rust skills for implementation and review.
 - Use rust-analyzer MCP for symbols and diagnostics.
 - Use egui MCP to inspect and test the running app.
