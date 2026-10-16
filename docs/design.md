@@ -5,7 +5,7 @@
 The native Rust implementation uses egui controls. The older HTML/Wails examples
 below are historical design references; these rules take precedence:
 
-- Use egui's default light visuals. Do not apply the brown accent in light mode.
+- Use egui's default light colors while retaining the app's control shapes, borders, spacing, and layout. Do not apply the brown accent in light mode.
 - Keep the bottom status bar fixed in both views, with status text at the far left
   and a persistent Settings toggle at the far right. The toggle stays selected
   while Settings is open; toggling it off cancels the draft.

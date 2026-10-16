@@ -151,15 +151,12 @@ pub fn caption_text() -> FontId {
     FontId::new(11.0, FontFamily::Proportional)
 }
 
-/// Apply typography and spacing to both appearances, retaining default light visuals.
+/// Apply the app's styling, using default light colors without resetting geometry.
 pub fn apply(ctx: &egui::Context) {
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let colors = palette(theme == egui::Theme::Dark);
         let mut style = (*ctx.style_of(theme)).clone();
         apply_to(&mut style, colors);
-        if theme == egui::Theme::Light {
-            style.visuals = egui::Visuals::light();
-        }
         ctx.set_style_of(theme, style);
     }
 }
@@ -711,6 +708,19 @@ mod tests {
         assert_eq!(actual.selection.stroke, expected.selection.stroke);
         assert_eq!(actual.panel_fill, expected.panel_fill);
         assert_eq!(palette(false).accent, expected.selection.bg_fill);
+        for widget in [
+            actual.widgets.inactive,
+            actual.widgets.hovered,
+            actual.widgets.active,
+            actual.widgets.open,
+        ] {
+            assert_eq!(widget.corner_radius, CornerRadius::same(RADIUS_CONTROL));
+        }
+        assert_eq!(actual.widgets.active.bg_stroke.width, FOCUS_RING_WIDTH);
+        assert_eq!(
+            ctx.style_of(egui::Theme::Light).spacing.interact_size.y,
+            CONTROL_HEIGHT
+        );
     }
 
     #[test]

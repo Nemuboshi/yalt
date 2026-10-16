@@ -49,7 +49,7 @@ Features of `call_api.py` that are absent from the desktop application are not i
 - Keep a fixed, non-resizable bottom status bar in both views. Status text starts at its far left; a Settings toggle stays at its far right.
 - The Settings toggle remains selected while Settings is open. Clicking it again returns to Translate and discards the unsaved draft, like Cancel.
 - Focused settings editors retain a visible outline, including the bounded multiline viewport.
-- Light mode uses egui's default light visuals instead of the custom brown palette.
+- Light mode uses egui's default light colors instead of the custom brown palette, while retaining the app's control shapes, borders, spacing, and layout.
 - Prefer a locally installed LXGW Neo XiHei (Plus when available) for all interface text. Resolve missing characters through installed system fonts, then egui defaults. Never embed or download XiHei during builds or at runtime.
 - Keep the application name in the native title bar.
 - Keep the input above the output at every supported window width.
