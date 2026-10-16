@@ -32,14 +32,23 @@ pub enum Command {
     Quit,
 }
 
+// The menu identifiers and their mapping are plain data, independent of the
+// tray backend: platforms with a backend build the menu from them, and the
+// tests exercise them everywhere. A backend-less non-test build therefore
+// sees them as unused, which the allow records as intended rather than as
+// decay.
 /// Menu item identifier for the open command.
+#[allow(dead_code)]
 const OPEN_ID: &str = "yalt-open";
 /// Menu item identifier for the settings command.
+#[allow(dead_code)]
 const SETTINGS_ID: &str = "yalt-settings";
 /// Menu item identifier for the quit command.
+#[allow(dead_code)]
 const QUIT_ID: &str = "yalt-quit";
 
 /// Map a menu item identifier to a command.
+#[allow(dead_code)]
 fn command_for(id: &str) -> Option<Command> {
     match id {
         OPEN_ID => Some(Command::Open),
@@ -256,6 +265,7 @@ fn install_handler(commands: Sender<Command>, waker: Waker) {
 fn install_handler(_commands: Sender<Command>, _waker: Waker) {}
 
 /// Tray icons are drawn at a small size; 32 covers the common scales.
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 const TRAY_ICON_SIZE: u32 = 32;
 
 /// A command channel for tray events.
