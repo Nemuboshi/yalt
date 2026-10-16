@@ -1,5 +1,21 @@
 # Visual Design System
 
+## Current eframe implementation
+
+The native Rust implementation uses egui controls. The older HTML/Wails examples
+below are historical design references; these rules take precedence:
+
+- Use egui's default light visuals. Do not apply the brown accent in light mode.
+- Keep the bottom status bar fixed in both views, with status text at the far left
+  and a persistent Settings toggle at the far right. The toggle stays selected
+  while Settings is open; toggling it off cancels the draft.
+- Give focused settings editors a visible outline, including multiline viewports.
+- Prefer locally installed LXGW Neo XiHei Plus, then LXGW Neo XiHei, for all text.
+  Missing characters use installed system fallbacks, then egui's bundled defaults.
+  Do not bundle or download XiHei. Its absence must not prevent building or running.
+- Component dimensions follow the layout and window size. Content overflow scrolls
+  inside bounded viewports and must not expand controls or displace actions.
+
 ## Purpose
 
 This document defines the visual language for the yalt desktop app.

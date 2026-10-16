@@ -50,12 +50,18 @@ pub struct YaltApp {
 }
 
 /// Feedback shown in the status bar after a copy attempt.
+///
+/// The status bar shows one message at a time, so feedback carries the request
+/// state it was produced in: once that state moves on, the summary takes over
+/// again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CopyFeedback {
     /// Text to show.
     message: String,
     /// Whether the copy failed.
     failed: bool,
+    /// The status and message in force when the copy happened.
+    state: (Status, String),
 }
 
 impl YaltApp {
@@ -258,16 +264,16 @@ impl YaltApp {
                 self.app.note_input_changed("");
             }
             translate::Action::Copy => {
-                let text = self.app.state().output.clone();
-                ctx.copy_text(text);
+                let state = self.app.state();
+                ctx.copy_text(state.output.clone());
                 // Copy feedback belongs in the status bar, not in the result
                 // card, so the layout stays stable.
                 self.copy_feedback = Some(CopyFeedback {
                     message: "Copied to clipboard".to_owned(),
                     failed: false,
+                    state: (state.status, state.message.clone()),
                 });
             }
-            translate::Action::OpenSettings => self.switch_to(View::Settings),
         }
     }
 
@@ -311,31 +317,41 @@ impl YaltApp {
         }
     }
 
-    /// Draw the toolbar.
-    fn toolbar(&mut self, ui: &mut egui::Ui, colors: &theme::Palette) {
-        ui.horizontal(|ui| {
-            ui.add_space(SPACE_TOOLBAR);
-            for (view, label) in [(View::Translate, "Translate"), (View::Settings, "Settings")] {
-                let selected = self.view == view;
-                let text = RichText::new(label).color(if selected {
-                    colors.label
-                } else {
-                    colors.secondary
-                });
-                let fill = if selected {
-                    colors.control
-                } else {
-                    colors.window
-                };
-                let button = egui::Button::new(text)
-                    .fill(fill)
-                    .stroke(egui::Stroke::new(1.0, colors.separator))
-                    .corner_radius(theme::RADIUS_CONTROL);
-                if ui.add(button).clicked() && !selected {
-                    self.switch_to(view);
-                }
-            }
-        });
+    /// Draw the status bar: the most recent message, and the Settings button.
+    ///
+    /// Only one message is ever shown. Copy feedback counts as newer than the
+    /// request summary it was produced from, and is dropped as soon as that
+    /// summary changes, so the two never appear side by side.
+    fn status_bar(&mut self, ui: &mut egui::Ui, colors: &theme::Palette) {
+        let state = self.app.state();
+        if self
+            .copy_feedback
+            .as_ref()
+            .is_some_and(|feedback| !feedback_is_current(feedback, state))
+        {
+            self.copy_feedback = None;
+        }
+        let (text, color) = match &self.copy_feedback {
+            Some(feedback) if feedback.failed => (feedback.message.clone(), colors.destructive),
+            Some(feedback) => (feedback.message.clone(), colors.success),
+            None => (
+                status_summary(state),
+                match state.status {
+                    Status::Failed => colors.destructive,
+                    Status::Complete => colors.success,
+                    Status::Stopped => colors.warning,
+                    _ => colors.secondary,
+                },
+            ),
+        };
+        let selected = self.view == View::Settings;
+        if status_contents(ui, selected, &text, color) {
+            self.switch_to(if selected {
+                View::Translate
+            } else {
+                View::Settings
+            });
+        }
     }
 
     /// Draw the notice strip, if any.
@@ -343,22 +359,27 @@ impl YaltApp {
         let Some(notice) = self.notice.clone() else {
             return;
         };
-        ui.horizontal(|ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(theme::SPACE_4);
-            ui.label(RichText::new(notice).color(colors.secondary));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Dismiss").clicked() {
-                    self.notice = None;
-                }
-                ui.add_space(theme::SPACE_4);
-            });
+            if ui.button("Dismiss").clicked() {
+                self.notice = None;
+            }
+            theme::message(ui, "notice-message", &notice, colors.secondary);
         });
         ui.add_space(theme::SPACE_2);
     }
 }
 
-/// Left inset for the toolbar contents.
-const SPACE_TOOLBAR: f32 = theme::SPACE_4;
+fn status_contents(ui: &mut egui::Ui, selected: bool, text: &str, color: egui::Color32) -> bool {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let clicked = ui.selectable_label(selected, "Settings").clicked();
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            theme::message(ui, "status-message", text, color);
+        });
+        clicked
+    })
+    .inner
+}
 
 /// What the window should do this pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -424,16 +445,9 @@ impl eframe::App for YaltApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let colors = theme::palette_for(ui.ctx().theme());
 
-        egui::Panel::top("toolbar")
-            .frame(
-                egui::Frame::new()
-                    .fill(colors.window)
-                    .inner_margin(egui::Margin::symmetric(0, theme::SPACE_2 as i8)),
-            )
-            .show(ui, |ui| {
-                self.toolbar(ui, &colors);
-            });
         egui::Panel::bottom("status")
+            .resizable(false)
+            .exact_size(theme::CONTROL_HEIGHT + 2.0 * theme::SPACE_2)
             .frame(
                 egui::Frame::new()
                     .fill(colors.window)
@@ -443,28 +457,7 @@ impl eframe::App for YaltApp {
                     )),
             )
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Copy feedback shares the status bar so the result card
-                    // keeps a stable layout.
-                    if let Some(feedback) = &self.copy_feedback {
-                        let color = if feedback.failed {
-                            colors.destructive
-                        } else {
-                            colors.success
-                        };
-                        ui.label(RichText::new(&feedback.message).color(color));
-                        ui.separator();
-                    }
-                    let state = self.app.state();
-                    let text = status_summary(state);
-                    let color = match state.status {
-                        Status::Failed => colors.destructive,
-                        Status::Complete => colors.success,
-                        Status::Stopped => colors.warning,
-                        _ => colors.secondary,
-                    };
-                    ui.label(RichText::new(text).color(color));
-                });
+                self.status_bar(ui, &colors);
             });
 
         egui::CentralPanel::default()
@@ -493,6 +486,14 @@ impl eframe::App for YaltApp {
     fn on_exit(&mut self) {
         self.app.shutdown();
     }
+}
+
+/// Whether copy feedback is still newer than the request state.
+///
+/// The status bar shows one message at a time, so feedback stops being news as
+/// soon as the state it was produced from has moved on.
+fn feedback_is_current(feedback: &CopyFeedback, state: &crate::app::RequestState) -> bool {
+    feedback.state == (state.status, state.message.clone())
 }
 
 /// One-line status summary for the status bar.
@@ -531,11 +532,50 @@ fn restart_notice(settings: &Settings) -> String {
     }
 }
 
-use eframe::egui::RichText;
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_text_starts_at_the_left_with_settings_on_the_right() {
+        let ctx = egui::Context::default();
+        let mut left = 0.0;
+        let mut right = 0.0;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(560.0, 100.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    left = ui.max_rect().left();
+                    right = ui.max_rect().right();
+                    status_contents(ui, true, "Ready", egui::Color32::WHITE);
+                });
+            },
+        );
+        let text_pos = |label: &str| {
+            output
+                .shapes
+                .iter()
+                .find_map(|shape| {
+                    if let egui::epaint::Shape::Text(text) = &shape.shape
+                        && text.galley.text() == label
+                    {
+                        Some(text.pos.x)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap()
+        };
+        assert!((text_pos("Ready") - left).abs() < 2.0);
+        assert!(text_pos("Settings") > right - 100.0);
+        output.textures_delta.clear();
+    }
 
     #[test]
     fn a_saved_settings_notice_mentions_restart_when_needed() {
@@ -629,6 +669,28 @@ mod tests {
             window_action(false, false, false, true, true),
             WindowAction::None
         );
+    }
+
+    #[test]
+    fn copy_feedback_is_superseded_by_a_newer_request_state() {
+        let mut state = crate::app::RequestState {
+            status: Status::Complete,
+            ..Default::default()
+        };
+        let feedback = CopyFeedback {
+            message: "Copied to clipboard".into(),
+            failed: false,
+            state: (Status::Complete, state.message.clone()),
+        };
+        // While nothing else has happened, the copy is still the latest news.
+        assert!(feedback_is_current(&feedback, &state));
+        // A new request takes over the status bar.
+        state.status = Status::Receiving;
+        assert!(!feedback_is_current(&feedback, &state));
+        // So does a message change, such as a failure.
+        state.status = Status::Complete;
+        state.message = "provider returned HTTP 429".into();
+        assert!(!feedback_is_current(&feedback, &state));
     }
 
     #[test]

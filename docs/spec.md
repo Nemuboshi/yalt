@@ -46,13 +46,21 @@ Features of `call_api.py` that are absent from the desktop application are not i
 ## 3. Window and Navigation
 
 - Keep native window decorations and operating-system window controls.
-- Use a compact toolbar with Translate and Settings as peer views.
+- Keep a fixed, non-resizable bottom status bar in both views. Status text starts at its far left; a Settings toggle stays at its far right.
+- The Settings toggle remains selected while Settings is open. Clicking it again returns to Translate and discards the unsaved draft, like Cancel.
+- Focused settings editors retain a visible outline, including the bounded multiline viewport.
+- Light mode uses egui's default light visuals instead of the custom brown palette.
+- Prefer a locally installed LXGW Neo XiHei (Plus when available) for all interface text. Resolve missing characters through installed system fonts, then egui defaults. Never embed or download XiHei during builds or at runtime.
 - Keep the application name in the native title bar.
 - Keep the input above the output at every supported window width.
 - Use 760 by 860 logical pixels as the initial window-size reference.
 - Evaluate the current 560 by 720 minimum during the prototype and establish a usable supported minimum before release.
 - At narrow widths, wrap or stack language controls as needed.
 - At short heights, allow page scrolling and keep actions reachable.
+- Component sizes are determined by the layout and window size, never by user text, provider messages, or item counts.
+- Text editors and collection controls have bounded viewports. Overflow scrolls inside the component; multiline text and additional glossary entries must not enlarge it.
+- Single-line fields retain one row and scroll horizontally with the cursor. Multiline editors and lists show scrollbars when their content exceeds the viewport.
+- Dynamic informational text stays within its allocated area, using internal scrolling or truncation with the full text available on hover. It must not push adjacent controls outside the window.
 - Long output scrolls within its own surface and does not expand the layout indefinitely.
 - Navigation to Settings and hiding the window to the tray do not cancel translation.
 - Returning to Translate shows retained input, output, and current request status.

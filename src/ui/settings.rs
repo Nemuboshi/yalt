@@ -58,52 +58,68 @@ impl SettingsView {
 
                 group(ui, "Connection", &colors, |ui| {
                     field(ui, "API base URL", &colors, |ui| {
-                        ui.add(
+                        let response = theme::settings_edit(
+                            ui,
                             theme::field_edit(&mut draft.api_base, "settings-api-base")
                                 .desired_width(f32::INFINITY),
                         );
+                        theme::text_edit_menu(ui, &response, &mut draft.api_base, false);
                     });
                     field(ui, "API method", &colors, |ui| {
                         let mut method = draft.settings.api_method;
-                        egui::ComboBox::from_id_salt("settings-api-method")
-                            .selected_text(method_label(method))
-                            .width(220.0)
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(
-                                    &mut method,
-                                    ApiMethod::ChatCompletions,
-                                    "Chat Completions",
-                                );
-                                ui.selectable_value(
-                                    &mut method,
-                                    ApiMethod::Responses,
-                                    "OpenAI Responses",
-                                );
-                            });
+                        ui.allocate_ui(egui::vec2(220.0, theme::CONTROL_HEIGHT), |ui| {
+                            egui::ComboBox::from_id_salt("settings-api-method")
+                                .truncate()
+                                .selected_text(method_label(method))
+                                .width(220.0)
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut method,
+                                        ApiMethod::ChatCompletions,
+                                        "Chat Completions",
+                                    );
+                                    ui.selectable_value(
+                                        &mut method,
+                                        ApiMethod::Responses,
+                                        "OpenAI Responses",
+                                    );
+                                });
+                        });
                         draft.settings.api_method = method;
                     });
                     field(ui, "API key (optional)", &colors, |ui| {
-                        ui.add(
+                        let response = theme::settings_edit(
+                            ui,
                             theme::field_edit(&mut draft.api_key, "settings-api-key")
                                 .password(true)
                                 .desired_width(f32::INFINITY),
                         );
+                        theme::text_edit_menu(ui, &response, &mut draft.api_key, true);
                     });
                     field(ui, "Model", &colors, |ui| {
-                        ui.add(
+                        let response = theme::settings_edit(
+                            ui,
                             theme::field_edit(&mut draft.model, "settings-model")
                                 .desired_width(f32::INFINITY),
                         );
+                        theme::text_edit_menu(ui, &response, &mut draft.model, false);
                     });
                     field(ui, "Request deadline (1–600 seconds)", &colors, |ui| {
-                        ui.add(
+                        let response = theme::settings_edit(
+                            ui,
                             theme::field_edit(&mut draft.timeout, "settings-timeout")
                                 .desired_width(120.0),
                         );
+                        theme::text_edit_menu(ui, &response, &mut draft.timeout, false);
                     });
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Request URL").color(colors.secondary));
-                        ui.label(RichText::new(draft.endpoint_preview()).color(colors.placeholder));
+                        theme::message(
+                            ui,
+                            "request-url",
+                            &draft.endpoint_preview(),
+                            colors.placeholder,
+                        );
                     });
                 });
 
@@ -117,12 +133,19 @@ impl SettingsView {
                                 &format!("Maximum output tokens (min {minimum})"),
                                 &colors,
                                 |ui| {
-                                    ui.add(
+                                    let response = theme::settings_edit(
+                                        ui,
                                         theme::field_edit(
                                             &mut draft.max_tokens,
                                             "settings-max-tokens",
                                         )
                                         .desired_width(120.0),
+                                    );
+                                    theme::text_edit_menu(
+                                        ui,
+                                        &response,
+                                        &mut draft.max_tokens,
+                                        false,
                                     );
                                 },
                             );
@@ -130,23 +153,25 @@ impl SettingsView {
                         ui.add_space(SPACE_4);
                         ui.vertical(|ui| {
                             field(ui, "Temperature", &colors, |ui| {
-                                ui.add(
+                                let response = theme::settings_edit(
+                                    ui,
                                     theme::field_edit(
                                         &mut draft.temperature,
                                         "settings-temperature",
                                     )
                                     .desired_width(120.0),
                                 );
+                                theme::text_edit_menu(ui, &response, &mut draft.temperature, false);
                             });
                         });
                     });
                     field(ui, "Extra instructions", &colors, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut draft.settings.instruction)
-                                .id_salt("settings-instruction")
-                                .desired_rows(3)
-                                .desired_width(f32::INFINITY)
-                                .hint_text("Optional style or formatting rules"),
+                        theme::multiline_field(
+                            ui,
+                            &mut draft.settings.instruction,
+                            "settings-instruction",
+                            3,
+                            "Optional style or formatting rules",
                         );
                     });
 
@@ -159,34 +184,52 @@ impl SettingsView {
                         });
                     });
                     ui.add_space(SPACE_2);
-                    if draft.settings.glossary.is_empty() {
-                        ui.label(RichText::new("No terms added.").color(colors.placeholder));
-                    }
                     let mut remove = None;
-                    for (index, term) in draft.settings.glossary.iter_mut().enumerate() {
-                        ui.horizontal(|ui| {
-                            // IDs are keyed on the row's own identity so they stay
-                            // stable when another row is removed.
-                            ui.add(
-                                theme::field_edit(&mut term.source, ("glossary-source", index))
-                                    .hint_text("Source term")
-                                    .desired_width(180.0),
-                            );
-                            ui.label(RichText::new("→").color(colors.secondary));
-                            ui.add(
-                                theme::field_edit(&mut term.target, ("glossary-target", index))
-                                    .hint_text("Translation")
-                                    .desired_width(180.0),
-                            );
-                            if ui
-                                .button("×")
-                                .on_hover_text("Remove glossary term")
-                                .clicked()
-                            {
-                                remove = Some(index);
+                    ScrollArea::vertical()
+                        .id_salt("settings-glossary")
+                        .max_height(4.0 * (theme::CONTROL_HEIGHT + ui.spacing().item_spacing.y))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if draft.settings.glossary.is_empty() {
+                                ui.label(
+                                    RichText::new("No terms added.").color(colors.placeholder),
+                                );
+                            }
+                            for (index, term) in draft.settings.glossary.iter_mut().enumerate() {
+                                ui.horizontal(|ui| {
+                                    let width =
+                                        ((ui.available_width() - 80.0) / 2.0 - 8.0).max(20.0);
+                                    let source = theme::settings_edit(
+                                        ui,
+                                        theme::field_edit(
+                                            &mut term.source,
+                                            ("glossary-source", index),
+                                        )
+                                        .hint_text("Source term")
+                                        .desired_width(width),
+                                    );
+                                    theme::text_edit_menu(ui, &source, &mut term.source, false);
+                                    ui.label(RichText::new("→").color(colors.secondary));
+                                    let target = theme::settings_edit(
+                                        ui,
+                                        theme::field_edit(
+                                            &mut term.target,
+                                            ("glossary-target", index),
+                                        )
+                                        .hint_text("Translation")
+                                        .desired_width(width),
+                                    );
+                                    theme::text_edit_menu(ui, &target, &mut term.target, false);
+                                    if ui
+                                        .button("×")
+                                        .on_hover_text("Remove glossary term")
+                                        .clicked()
+                                    {
+                                        remove = Some(index);
+                                    }
+                                });
                             }
                         });
-                    }
                     if let Some(index) = remove {
                         draft.remove_term(index);
                     }
@@ -194,11 +237,14 @@ impl SettingsView {
                     ui.add_space(SPACE_2);
                     ui.label(RichText::new("Import glossary JSON").color(colors.secondary));
                     ui.horizontal(|ui| {
-                        ui.add(
+                        let width = (ui.available_width() - 90.0).clamp(20.0, 320.0);
+                        let response = theme::settings_edit(
+                            ui,
                             theme::field_edit(&mut self.import_text, "glossary-import")
                                 .hint_text(r#"{"source": "target"}"#)
-                                .desired_width(320.0),
+                                .desired_width(width),
                         );
+                        theme::text_edit_menu(ui, &response, &mut self.import_text, false);
                         if ui.button("Import").clicked() {
                             let json = self.import_text.clone();
                             match draft.import_glossary(&json) {
@@ -230,15 +276,13 @@ impl SettingsView {
                 });
 
                 ui.add_space(SPACE_6);
+                let color = if draft.feedback_is_error {
+                    colors.destructive
+                } else {
+                    colors.success
+                };
+                theme::message(ui, "settings-feedback", &draft.feedback, color);
                 ui.horizontal(|ui| {
-                    if !draft.feedback.is_empty() {
-                        let color = if draft.feedback_is_error {
-                            colors.destructive
-                        } else {
-                            colors.success
-                        };
-                        ui.label(RichText::new(draft.feedback.clone()).color(color));
-                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if primary_button(ui, "Save settings", &colors).clicked() {
                             action = Some(Action::Save);
@@ -335,6 +379,72 @@ pub fn save_error_message(error: &ValidationError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_content_does_not_expand_the_settings_form() {
+        fn measure(settings: &Settings, width: f32, feedback: &str) -> egui::Vec2 {
+            let ctx = egui::Context::default();
+            theme::apply(&ctx);
+            let mut view = SettingsView::default();
+            view.open(settings);
+            view.draft.as_mut().unwrap().feedback = feedback.into();
+            let mut size = egui::Vec2::ZERO;
+            for _ in 0..3 {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 3000.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        egui::CentralPanel::default().show(ui, |ui| {
+                            view.ui(ui);
+                            size = ui.min_size();
+                        });
+                    },
+                );
+                size.y = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| {
+                        if let egui::epaint::Shape::Text(text) = &shape.shape
+                            && text.galley.text() == "Desktop"
+                        {
+                            Some(text.pos.y)
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("Desktop section should be visible in the tall test viewport");
+                output.textures_delta.clear();
+            }
+            size
+        }
+        let short = Settings::default();
+        let mut long = short.clone();
+        long.instruction = "Long instruction text\n".repeat(200);
+        long.api_base = format!("https://example.com/{}", "long-path/".repeat(200));
+        long.glossary = (0..100)
+            .map(|index| crate::translation::prompt::Glossary {
+                source: format!("{index}{}", "source".repeat(100)),
+                target: "translation".repeat(100),
+            })
+            .collect();
+        for width in [560.0, 760.0] {
+            let baseline = measure(&short, width, "");
+            let oversized = measure(&long, width, &"Very long error\n".repeat(100));
+            assert!(
+                (baseline.y - oversized.y).abs() < 1.0,
+                "content changed form height: {baseline:?} -> {oversized:?}"
+            );
+            assert!(
+                oversized.x <= width,
+                "content overflowed width: {oversized:?}"
+            );
+        }
+    }
 
     #[test]
     fn opening_creates_a_draft_from_saved_settings() {

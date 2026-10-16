@@ -1,196 +1,447 @@
-//! Font fallback configuration.
+//! Runtime font selection, shared by both built-in egui families.
 //!
-//! egui's bundled fonts cover Latin, Greek, and Cyrillic but contain no CJK
-//! glyphs, so Chinese, Japanese, and Korean text renders as blank boxes
-//! without an explicit fallback.
-//!
-//! Two sources fix that. The embedded LXGW Neo XiHei Plus covers Han and
-//! kana identically on every platform. Scripts it does not cover, so far
-//! Hangul, fall back to system fonts chosen by coverage, not by name: the
-//! build asks the operating system's own font database which installed face
-//! can draw a probe of the script, and appends that face to the chain. No
-//! family name is hardcoded, so each platform routes through the font its
-//! users would expect. When no installed face covers a script, the chain
-//! simply lacks that entry; the application still starts.
-//!
-//! The chain is built once before the first frame, never per frame. The
-//! embedded font file is not committed to git; the build script stages it
-//! into `OUT_DIR` from a local copy or a fetch of the official release.
+//! Installed Neo XiHei is preferred for every character. The system's generic
+//! sans face and other regular faces provide per-character Unicode fallbacks;
+//! egui's defaults remain last. Discovery and cmap scanning happen once before
+//! the first frame. No XiHei font is bundled, downloaded, or required to start.
 
 use std::sync::Arc;
 
-use eframe::egui::{FontData, FontDefinitions, FontFamily};
+use eframe::egui::{FontData, FontDefinitions};
 
-/// The embedded CJK fallback font, LXGW Neo XiHei Plus (SIL OFL 1.1).
-///
-/// An `include_bytes` font keeps packaged builds self-contained: the text
-/// cannot break by moving the executable away from its assets or by running
-/// it on a machine with no CJK fonts installed.
-const FALLBACK_FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/LXGWNeoXiHeiPlus.ttf"));
-
-/// Name of the embedded face's entry in the font definitions.
-const FALLBACK_NAME: &str = "cjk-han";
-
-/// A script the embedded font does not cover, its entry name, and a probe
-/// that a system face must be able to draw to qualify as its fallback.
-const SYSTEM_GAPS: &[(&str, &str)] = &[("cjk-hangul", "한국어 테스트")];
-
-/// Build font definitions from the embedded face plus system fallbacks.
 pub fn definitions() -> FontDefinitions {
-    let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert(
-        FALLBACK_NAME.to_owned(),
-        Arc::new(FontData::from_static(FALLBACK_FONT)),
-    );
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    definitions_from_db(&db)
+}
 
-    // Append rather than prepend: the default font stays primary, and the
-    // fallbacks are consulted only for glyphs the earlier faces cannot draw.
-    let mut names = vec![FALLBACK_NAME.to_owned()];
-    for (name, data) in system_fallbacks() {
-        fonts.font_data.insert(name.clone(), Arc::new(data));
-        names.push(name);
-    }
-    for name in names {
-        for family in [FontFamily::Proportional, FontFamily::Monospace] {
-            fonts.families.entry(family).or_default().push(name.clone());
+fn definitions_from_db(db: &fontdb::Database) -> FontDefinitions {
+    let mut fonts = FontDefinitions::default();
+    let mut coverage = Coverage::default();
+    let mut selected = Vec::new();
+    let mut names = Vec::new();
+
+    // Family metadata includes localized aliases. Prefer Plus, then the base
+    // family, and choose the closest available face to regular upright.
+    let mut preferred: Vec<_> = db
+        .faces()
+        .filter_map(|face| xihei_priority(face).map(|priority| (priority, face)))
+        .collect();
+    preferred.sort_by_key(|(priority, face)| (*priority, rank(face), &face.post_script_name));
+    for (_, face) in preferred {
+        if append_face(db, face.id, true, &mut fonts, &mut coverage, &mut names) {
+            selected.push(face.id);
+            break;
         }
+    }
+
+    if let Some(id) = db.query(&fontdb::Query {
+        families: &[fontdb::Family::SansSerif],
+        ..Default::default()
+    }) && !selected.contains(&id)
+        && append_face(db, id, true, &mut fonts, &mut coverage, &mut names)
+    {
+        selected.push(id);
+    }
+
+    // Scan each remaining regular face once, copying bytes only for faces
+    // that add coverage. A script probe would miss less common characters.
+    let mut candidates: Vec<_> = db
+        .faces()
+        .filter(|face| {
+            face.weight == fontdb::Weight::NORMAL
+                && face.style == fontdb::Style::Normal
+                && face.stretch == fontdb::Stretch::Normal
+                && !selected.contains(&face.id)
+        })
+        .collect();
+    candidates.sort_by_key(|face| &face.post_script_name);
+    let mut candidates: Vec<_> = candidates
+        .into_iter()
+        .filter_map(|face| {
+            let cmap = db.with_face_data(face.id, Coverage::from_font)??;
+            Some((face.id, cmap))
+        })
+        .collect();
+    // Prefer broad coverage over many nearly identical CJK faces. Bound the
+    // retained fonts so rare glyphs cannot consume unbounded startup memory.
+    let mut extra_bytes = 0;
+    for _ in 0..16 {
+        let Some((position, added)) = candidates
+            .iter()
+            .enumerate()
+            .map(|(position, (_, cmap))| (position, cmap.additional_count(&coverage)))
+            .max_by_key(|(position, count)| (*count, std::cmp::Reverse(*position)))
+        else {
+            break;
+        };
+        if added == 0 {
+            break;
+        }
+        let (id, _) = candidates.remove(position);
+        let size = db.with_face_data(id, |bytes, _| bytes.len()).unwrap_or(0);
+        if extra_bytes + size > 128 * 1024 * 1024 {
+            continue;
+        }
+        if append_face(db, id, false, &mut fonts, &mut coverage, &mut names) {
+            extra_bytes += size;
+        }
+    }
+
+    // Both proportional and monospace text prefer XiHei, including Latin.
+    // Register each face only once; the family chains share its FontData.
+    for chain in fonts.families.values_mut() {
+        chain.retain(|name| !names.contains(name));
+        chain.splice(0..0, names.iter().cloned());
     }
     fonts
 }
 
-/// One entry per gap: the registered name and its face data.
-fn system_fallbacks() -> Vec<(String, FontData)> {
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-    SYSTEM_GAPS
+fn xihei_priority(face: &fontdb::FaceInfo) -> Option<u8> {
+    face.families
         .iter()
-        .filter_map(|(name, probe)| {
-            let id = find_face(&db, probe)?;
-            let face = db.face(id)?;
-            let index = face.index;
-            let face_name = face.post_script_name.clone();
-            let data = db.with_face_data(id, |data, _index| data.to_vec())?;
-            let mut font = FontData::from_owned(data);
-            font.index = index;
-            eprintln!("yalt: {name} from system face {face_name}");
-            Some(((*name).to_owned(), font))
+        .filter_map(|(name, _)| {
+            let name: String = name
+                .chars()
+                .filter(|c| !c.is_whitespace() && !matches!(c, '-' | '_'))
+                .flat_map(char::to_lowercase)
+                .map(|c| if c == '＋' { '+' } else { c })
+                .collect();
+            match name.as_str() {
+                "lxgwneoxiheiplus"
+                | "霞鹜新晰黑plus"
+                | "霞鶩新晰黑plus"
+                | "霞鹜新晰黑+"
+                | "霞鶩新晰黑+" => Some(0),
+                "lxgwneoxihei" | "霞鹜新晰黑" | "霞鶩新晰黑" => Some(1),
+                _ => None,
+            }
         })
-        .collect()
+        .min()
 }
 
-/// The installed face that can draw every character of a probe.
-///
-/// Candidates are ranked so the pick behaves like a system default: a
-/// regular weight and normal style outrank bold, light, or italic, and the
-/// PostScript name breaks remaining ties, so the result does not depend on
-/// the order the operating system happens to report its fonts in.
-fn find_face(db: &fontdb::Database, probe: &str) -> Option<fontdb::ID> {
-    let wanted: Vec<char> = probe.chars().filter(|c| !c.is_whitespace()).collect();
-    db.faces()
-        .filter(|face| {
-            db.with_face_data(face.id, |data, index| {
-                ttf_parser::Face::parse(data, index)
-                    .is_ok_and(|parsed| wanted.iter().all(|c| parsed.glyph_index(*c).is_some()))
-            })
-            .unwrap_or(false)
-        })
-        .min_by_key(|face| (rank(face), face.post_script_name.clone()))
-        .map(|face| face.id)
+fn rank(face: &fontdb::FaceInfo) -> (u8, u16, bool) {
+    (
+        u8::from(face.style != fontdb::Style::Normal),
+        face.weight.0.abs_diff(400),
+        face.stretch != fontdb::Stretch::Normal,
+    )
 }
 
-/// A lower rank is a better fallback face: regular weight, then normal style.
-fn rank(face: &fontdb::FaceInfo) -> (u16, u8) {
-    // Distance from 400 puts regular weight first, light and bold later.
-    let weight_gap = face.weight.0.abs_diff(400);
-    let style_penalty = match face.style {
-        fontdb::Style::Normal => 0,
-        fontdb::Style::Italic | fontdb::Style::Oblique => 1,
-    };
-    (weight_gap, style_penalty)
+/// Append a readable face, retaining the collection index. Preferred and generic
+/// faces keep their priority even when an earlier font covers the same glyphs.
+fn append_face(
+    db: &fontdb::Database,
+    id: fontdb::ID,
+    primary: bool,
+    fonts: &mut FontDefinitions,
+    covered: &mut Coverage,
+    names: &mut Vec<String>,
+) -> bool {
+    db.with_face_data(id, |bytes, index| {
+        let Some(coverage) = Coverage::from_font(bytes, index) else {
+            return false;
+        };
+        if !primary && !coverage.adds_to(covered) {
+            return false;
+        }
+
+        // Reuse identical data already present (including egui defaults).
+        // This also avoids copying duplicate installations of the same face.
+        let existing = fonts
+            .font_data
+            .iter()
+            .find(|(_, data)| data.index == index && data.font.as_ref() == bytes)
+            .map(|(name, _)| name.clone());
+        let name = existing.unwrap_or_else(|| {
+            let name = format!("system-font-{}", fonts.font_data.len());
+            let mut data = FontData::from_owned(bytes.to_vec());
+            data.index = index;
+            fonts.font_data.insert(name.clone(), Arc::new(data));
+            name
+        });
+        if !names.contains(&name) {
+            names.push(name);
+        }
+        covered.extend(&coverage);
+        true
+    })
+    .unwrap_or(false)
+}
+
+/// A small fixed-size Unicode bitset (136 KiB), independent of glyph count.
+/// It avoids allocating a tree or hash entry for every CJK character.
+struct Coverage(Vec<u64>);
+
+impl Default for Coverage {
+    fn default() -> Self {
+        Self(vec![0; 0x110000 / 64])
+    }
+}
+
+impl Coverage {
+    fn from_font(bytes: &[u8], index: u32) -> Option<Self> {
+        let face = ttf_parser::Face::parse(bytes, index).ok()?;
+        let mut coverage = Self::default();
+        // Unicode cmaps commonly repeat the same mapping for multiple
+        // platforms. Prefer a full-repertoire table; otherwise use the first
+        // Unicode table, as ttf-parser does for character lookup.
+        let subtable = face
+            .tables()
+            .cmap?
+            .subtables
+            .into_iter()
+            .filter(|table| table.is_unicode())
+            .max_by_key(|table| {
+                matches!(table.format, ttf_parser::cmap::Format::SegmentedCoverage(_))
+            })?;
+        // Format 12 maps sequential ranges. Walking the raw groups avoids a
+        // binary search per glyph in large CJK fonts while excluding glyph 0.
+        if matches!(
+            subtable.format,
+            ttf_parser::cmap::Format::SegmentedCoverage(_)
+        ) {
+            let cmap = face
+                .raw_face()
+                .table(ttf_parser::Tag::from_bytes(b"cmap"))?;
+            let count = u16::from_be_bytes(cmap.get(2..4)?.try_into().ok()?) as usize;
+            for record in cmap.get(4..4 + count * 8)?.as_chunks::<8>().0 {
+                let platform = u16::from_be_bytes(record[0..2].try_into().ok()?);
+                let encoding = u16::from_be_bytes(record[2..4].try_into().ok()?);
+                if platform != subtable.platform_id as u16 || encoding != subtable.encoding_id {
+                    continue;
+                }
+                let offset = u32::from_be_bytes(record[4..8].try_into().ok()?) as usize;
+                let table = cmap.get(offset..)?;
+                let count = u32::from_be_bytes(table.get(12..16)?.try_into().ok()?) as usize;
+                for group in table.get(16..16 + count * 12)?.as_chunks::<12>().0 {
+                    let start = u32::from_be_bytes(group[0..4].try_into().ok()?);
+                    let end = u32::from_be_bytes(group[4..8].try_into().ok()?).min(0x10ffff);
+                    let glyph = u32::from_be_bytes(group[8..12].try_into().ok()?);
+                    for codepoint in start..=end {
+                        if char::from_u32(codepoint).is_some()
+                            && glyph
+                                .checked_add(codepoint - start)
+                                .is_some_and(|g| g > 0 && g <= u16::MAX as u32)
+                        {
+                            coverage.0[codepoint as usize / 64] |= 1 << (codepoint % 64);
+                        }
+                    }
+                }
+                break;
+            }
+        } else {
+            subtable.codepoints(|codepoint| {
+                if char::from_u32(codepoint).is_some()
+                    && subtable
+                        .glyph_index(codepoint)
+                        .is_some_and(|glyph| glyph.0 != 0)
+                {
+                    coverage.0[codepoint as usize / 64] |= 1 << (codepoint % 64);
+                }
+            });
+        }
+        Some(coverage)
+    }
+
+    fn adds_to(&self, covered: &Self) -> bool {
+        self.0.iter().zip(&covered.0).any(|(a, b)| a & !b != 0)
+    }
+
+    fn additional_count(&self, covered: &Self) -> u32 {
+        self.0
+            .iter()
+            .zip(&covered.0)
+            .map(|(a, b)| (a & !b).count_ones())
+            .sum()
+    }
+
+    fn extend(&mut self, other: &Self) {
+        for (a, b) in self.0.iter_mut().zip(&other.0) {
+            *a |= b;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::FontId;
+    use eframe::egui::FontFamily;
     use eframe::egui::epaint::text::TextOptions;
     use eframe::egui::text::Fonts;
 
-    /// Han and kana samples, including the punctuation that appears in
-    /// real translations. These must draw on every platform because the
-    /// face that covers them is embedded.
-    const EMBEDDED_SAMPLES: &[&str] = &[
-        "你好，世界。这是简体中文测试。",
-        "日本語のテスト、カタカナも。",
-    ];
-
-    fn drawer() -> (Fonts, FontId) {
-        let fonts = definitions();
-        let drawer = Fonts::new(TextOptions::default(), fonts);
-        (drawer, FontId::new(15.0, FontFamily::Proportional))
+    // Existing egui bytes stand in for installed fonts. Tests never depend on
+    // which fonts happen to be installed on the developer or CI machine.
+    fn install(db: &mut fontdb::Database, fixture: &str, family: &str) -> fontdb::ID {
+        let data = &FontDefinitions::default().font_data[fixture];
+        let mut source = fontdb::Database::new();
+        source.load_font_data(data.font.to_vec());
+        let mut face = source.faces().next().unwrap().clone();
+        face.families[0].0 = family.to_owned();
+        face.post_script_name = family.to_owned();
+        face.weight = fontdb::Weight::NORMAL;
+        face.style = fontdb::Style::Normal;
+        face.stretch = fontdb::Stretch::Normal;
+        db.push_face_info(face)
     }
 
     #[test]
-    fn definitions_always_include_the_default_families() {
+    fn installed_font_discovery_smoke_test() {
+        let start = std::time::Instant::now();
         let fonts = definitions();
-        assert!(fonts.families.contains_key(&FontFamily::Proportional));
-        assert!(fonts.families.contains_key(&FontFamily::Monospace));
+        let bytes: usize = fonts.font_data.values().map(|data| data.font.len()).sum();
+        eprintln!(
+            "runtime fonts: {} faces, {:.1} MiB, {:?}",
+            fonts.font_data.len(),
+            bytes as f64 / (1024.0 * 1024.0),
+            start.elapsed()
+        );
+        assert!(!fonts.families[&FontFamily::Proportional].is_empty());
     }
 
     #[test]
-    fn fallbacks_are_appended_after_the_default_font() {
-        let fonts = definitions();
-        assert!(fonts.font_data.contains_key(FALLBACK_NAME));
+    fn no_installed_fonts_keeps_egui_defaults_and_can_draw() {
+        let fonts = definitions_from_db(&fontdb::Database::new());
+        assert_eq!(fonts.families, FontDefinitions::default().families);
+        let mut drawer = Fonts::new(TextOptions::default(), fonts);
+        assert!(drawer.has_glyphs(
+            &eframe::egui::FontId::proportional(15.0),
+            "Missing XiHei: ready!"
+        ));
+    }
+
+    #[test]
+    fn xihei_precedes_generic_sans_and_defaults_for_both_families() {
+        let mut db = fontdb::Database::new();
+        install(&mut db, "Hack", "System Sans");
+        db.set_sans_serif_family("System Sans");
+        install(&mut db, "Ubuntu-Light", "LXGW Neo XiHei Plus");
+        let fonts = definitions_from_db(&db);
         for family in [FontFamily::Proportional, FontFamily::Monospace] {
-            let chain = &fonts.families[&family];
-            assert!(
-                chain.contains(&FALLBACK_NAME.to_owned()),
-                "{FALLBACK_NAME} missing from {family:?}"
-            );
-            // The embedded font and any system faces come after the defaults.
-            assert!(chain.len() >= 2, "nothing was appended to {family:?}");
+            assert_eq!(&fonts.families[&family][..2], ["Ubuntu-Light", "Hack"]);
         }
-    }
-
-    #[test]
-    fn the_embedded_scripts_can_be_drawn() {
-        // This is the check that matters on every platform: the embedded
-        // face must actually cover the scripts it claims.
-        let (mut fonts, font_id) = drawer();
-        for sample in EMBEDDED_SAMPLES {
-            assert!(
-                fonts.has_glyphs(&font_id, sample),
-                "text cannot be drawn: {sample:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_system_gap_is_drawn_when_a_face_exists() {
-        // Hangul depends on an installed face, which a minimal Linux system
-        // may lack. The chain degrades silently there, so this asserts only
-        // when a fallback was found; Windows and macOS runners always have
-        // one, which keeps the discovery path exercised where it matters.
-        let (mut fonts, font_id) = drawer();
-        let name = SYSTEM_GAPS[0].0;
-        if !fonts.definitions().font_data.contains_key(name) {
-            eprintln!("yalt test: no system face for {name}; skipped");
-            return;
-        }
-        assert!(
-            fonts.has_glyphs(&font_id, SYSTEM_GAPS[0].1),
-            "text cannot be drawn: {:?}",
-            SYSTEM_GAPS[0].1
+        // Reuse the fixture data rather than copying it under a second name.
+        assert_eq!(
+            fonts.font_data.len(),
+            FontDefinitions::default().font_data.len()
         );
     }
 
     #[test]
-    fn the_embedded_font_is_a_readable_ttf() {
-        // A corrupt or replaced asset must fail here, not silently in the UI.
+    fn absent_xihei_immediately_uses_generic_sans() {
+        let mut db = fontdb::Database::new();
+        install(&mut db, "Hack", "System Sans");
+        db.set_sans_serif_family("System Sans");
+        let fonts = definitions_from_db(&db);
+        for chain in fonts.families.values() {
+            assert_eq!(chain[0], "Hack");
+        }
+    }
+
+    #[test]
+    fn plus_and_localized_aliases_are_preferred_over_base_family() {
+        for alias in [
+            "LXGW Neo XiHei Plus",
+            "霞鹜新晰黑 Plus",
+            "霞鶩新晰黑 Plus",
+            "霞鹜新晰黑＋",
+            "霞鶩新晰黑＋",
+        ] {
+            let mut db = fontdb::Database::new();
+            install(&mut db, "Hack", "LXGW Neo XiHei");
+            install(&mut db, "Ubuntu-Light", alias);
+            let fonts = definitions_from_db(&db);
+            assert_eq!(fonts.families[&FontFamily::Proportional][0], "Ubuntu-Light");
+        }
+        let mut db = fontdb::Database::new();
+        install(&mut db, "Hack", "霞鹜新晰黑");
+        assert_eq!(
+            definitions_from_db(&db).families[&FontFamily::Proportional][0],
+            "Hack"
+        );
+    }
+
+    #[test]
+    fn only_regular_faces_with_additional_unicode_coverage_are_added() {
+        let mut db = fontdb::Database::new();
+        install(&mut db, "Hack", "A Sans");
+        db.set_sans_serif_family("A Sans");
+        install(&mut db, "Hack", "B Duplicate");
+        let italic = install(&mut db, "NotoEmoji-Regular", "C Italic");
+        let mut face = db.face(italic).unwrap().clone();
+        db.remove_face(italic);
+        face.style = fontdb::Style::Italic;
+        db.push_face_info(face);
+        install(&mut db, "NotoEmoji-Regular", "D Extra Coverage");
+        let fonts = definitions_from_db(&db);
+        let chain = &fonts.families[&FontFamily::Proportional];
+        assert_eq!(&chain[..2], ["Hack", "NotoEmoji-Regular"]);
+        assert_eq!(
+            chain,
+            &[
+                "Hack",
+                "NotoEmoji-Regular",
+                "Ubuntu-Light",
+                "emoji-icon-font"
+            ]
+        );
+    }
+
+    #[test]
+    fn collection_face_index_is_preserved() {
+        let defaults = FontDefinitions::default();
+        let sfnt = defaults.font_data["Hack"].font.as_ref();
+        // Build a two-face collection without committing a font fixture.
+        // TTC table offsets are file-relative, including in the second face.
+        let mut collection = b"ttcf\0\x01\0\0\0\0\0\x02\0\0\0\0\0\0\0\0".to_vec();
+        let table_count = u16::from_be_bytes(sfnt[4..6].try_into().unwrap()) as usize;
+        for index in 0..2 {
+            let start = collection.len();
+            collection[12 + index * 4..16 + index * 4]
+                .copy_from_slice(&(start as u32).to_be_bytes());
+            collection.extend_from_slice(sfnt);
+            for table in 0..table_count {
+                let offset = start + 12 + table * 16 + 8;
+                let value = u32::from_be_bytes(collection[offset..offset + 4].try_into().unwrap());
+                collection[offset..offset + 4]
+                    .copy_from_slice(&(value + start as u32).to_be_bytes());
+            }
+            while !collection.len().is_multiple_of(4) {
+                collection.push(0);
+            }
+        }
+        let mut db = fontdb::Database::new();
+        let id = install(&mut db, "Hack", "LXGW Neo XiHei");
+        let mut face = db.face(id).unwrap().clone();
+        db.remove_face(id);
+        face.source = fontdb::Source::Binary(Arc::new(collection));
+        face.index = 1;
+        db.push_face_info(face);
+        let fonts = definitions_from_db(&db);
+        let name = &fonts.families[&FontFamily::Proportional][0];
+        assert_eq!(fonts.font_data[name].index, 1);
+        let data = &fonts.font_data[name];
+        let parsed = ttf_parser::Face::parse(data.font.as_ref(), data.index).unwrap();
         assert!(
-            FALLBACK_FONT.starts_with(&[0x00, 0x01, 0x00, 0x00])
-                || FALLBACK_FONT.starts_with(b"OTTO"),
-            "the embedded font must be a TTF or OTF"
+            "Collection"
+                .chars()
+                .all(|c| parsed.glyph_index(c).is_some())
+        );
+    }
+
+    #[test]
+    fn unreadable_preferred_face_does_not_block_system_fallback() {
+        let mut db = fontdb::Database::new();
+        let id = install(&mut db, "Ubuntu-Light", "LXGW Neo XiHei Plus");
+        let mut face = db.face(id).unwrap().clone();
+        db.remove_face(id);
+        face.source = fontdb::Source::Binary(Arc::new(vec![0; 16]));
+        db.push_face_info(face);
+        install(&mut db, "Hack", "System Sans");
+        db.set_sans_serif_family("System Sans");
+        assert_eq!(
+            definitions_from_db(&db).families[&FontFamily::Proportional][0],
+            "Hack"
         );
     }
 }

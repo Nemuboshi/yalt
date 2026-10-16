@@ -2,10 +2,16 @@
 
 use eframe::egui::{self, Align, Layout, RichText, ScrollArea, TextEdit, Ui};
 
-use crate::app::{App, StartError, Status};
+use crate::app::{App, StartError};
 use crate::translation::languages;
 
-use super::theme::{self, SPACE_2, SPACE_3, SPACE_4};
+use super::theme::{self, SPACE_1, SPACE_2, SPACE_3, SPACE_4};
+
+/// Rows the input editor shows before it scrolls.
+const EDITOR_ROWS: usize = 8;
+
+/// Smallest height the result box keeps on a short window.
+const MIN_RESULT_HEIGHT: f32 = 80.0;
 
 /// Persistent UI state for the translation view.
 ///
@@ -32,8 +38,6 @@ pub enum Action {
     Clear,
     /// Copy the current result.
     Copy,
-    /// Switch to the Settings view.
-    OpenSettings,
 }
 
 impl TranslateView {
@@ -64,24 +68,22 @@ impl TranslateView {
     }
 
     /// Draw the view, returning any requested action.
+    ///
+    /// The layout is fixed: the language bar and the input box keep their
+    /// heights, and the result box fills the rest of the panel. Text beyond
+    /// each box's height scrolls inside that box.
     pub fn ui(&mut self, ui: &mut Ui, app: &mut App) -> Option<Action> {
         let colors = theme::palette(ui.visuals().dark_mode);
-        let mut action = None;
+        let mut action;
 
         self.language_bar(ui, app, &colors);
         ui.add_space(SPACE_3);
 
-        ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                if let Some(requested) = self.editor(ui, app, &colors) {
-                    action = Some(requested);
-                }
-                ui.add_space(SPACE_4);
-                if let Some(requested) = self.result(ui, app, &colors) {
-                    action = Some(requested);
-                }
-            });
+        action = self.editor(ui, app, &colors);
+        ui.add_space(SPACE_4);
+        if let Some(requested) = self.result(ui, app, &colors) {
+            action = Some(requested);
+        }
         action
     }
 
@@ -92,55 +94,66 @@ impl TranslateView {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new("From").color(colors.secondary));
                 let selected = self.source_label(app);
-                egui::ComboBox::from_id_salt("source-language")
-                    .selected_text(selected)
-                    .width(170.0)
-                    .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_value(
-                                &mut self.source,
-                                "auto".to_owned(),
-                                "Detect language",
-                            )
-                            .clicked()
-                        {
-                            changed = true;
-                        }
-                        for language in languages::LANGUAGES {
+                ui.allocate_ui(egui::vec2(170.0, theme::CONTROL_HEIGHT), |ui| {
+                    egui::ComboBox::from_id_salt("source-language")
+                        .selected_text(&selected)
+                        .truncate()
+                        .width(170.0)
+                        .show_ui(ui, |ui| {
                             if ui
                                 .selectable_value(
                                     &mut self.source,
-                                    language.code.to_owned(),
-                                    language.name,
+                                    "auto".to_owned(),
+                                    "Detect language",
                                 )
                                 .clicked()
                             {
                                 changed = true;
                             }
-                        }
-                    });
+                            for language in languages::LANGUAGES {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.source,
+                                        language.code.to_owned(),
+                                        language.name,
+                                    )
+                                    .clicked()
+                                {
+                                    changed = true;
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text(&selected);
+                });
                 ui.add_space(SPACE_2);
                 ui.label(RichText::new("→").color(colors.secondary));
                 ui.add_space(SPACE_2);
                 ui.label(RichText::new("To").color(colors.secondary));
-                egui::ComboBox::from_id_salt("target-language")
-                    .selected_text(self.target_label(app))
-                    .width(170.0)
-                    .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_value(&mut self.target, "auto".to_owned(), "Auto")
-                            .clicked()
-                        {
-                            changed = true;
-                        }
-                        for language in languages::LANGUAGES {
-                            ui.selectable_value(
-                                &mut self.target,
-                                language.code.to_owned(),
-                                language.name,
-                            );
-                        }
-                    });
+                let selected = self.target_label(app);
+                ui.allocate_ui(egui::vec2(170.0, theme::CONTROL_HEIGHT), |ui| {
+                    egui::ComboBox::from_id_salt("target-language")
+                        .selected_text(&selected)
+                        .truncate()
+                        .width(170.0)
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(&mut self.target, "auto".to_owned(), "Auto")
+                                .clicked()
+                            {
+                                changed = true;
+                            }
+                            for language in languages::LANGUAGES {
+                                ui.selectable_value(
+                                    &mut self.target,
+                                    language.code.to_owned(),
+                                    language.name,
+                                );
+                            }
+                        })
+                        .response
+                        .on_hover_text(&selected);
+                });
             });
             changed
         };
@@ -181,6 +194,9 @@ impl TranslateView {
     }
 
     /// Input editor and its action row.
+    ///
+    /// The editor keeps a fixed height and scrolls internally, so a long
+    /// input never pushes the result off the view.
     fn editor(&mut self, ui: &mut Ui, app: &mut App, colors: &theme::Palette) -> Option<Action> {
         let mut action = None;
         let active = app.state().status.is_active();
@@ -199,32 +215,42 @@ impl TranslateView {
             .corner_radius(theme::RADIUS_GROUP)
             .inner_margin(SPACE_3)
             .show(ui, |ui| {
-                let editor = TextEdit::multiline(&mut self.input)
-                    .id_salt("translation-input")
-                    .desired_rows(8)
-                    .desired_width(f32::INFINITY)
-                    .font(theme::editor_text())
-                    .frame(theme::editor_frame())
-                    .hint_text("Write or paste something…");
-                let response = ui.add(editor);
-                let focused = response.has_focus();
+                let focused = ScrollArea::vertical()
+                    .id_salt("translation-input-scroll")
+                    .max_height(editor_height(ui))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let response = theme::text_edit(
+                            ui,
+                            TextEdit::multiline(&mut self.input)
+                                .id_salt("translation-input")
+                                .desired_rows(EDITOR_ROWS)
+                                .desired_width(f32::INFINITY)
+                                .font(theme::editor_text())
+                                .frame(theme::editor_frame())
+                                .hint_text("Write or paste something…"),
+                        );
+                        theme::text_edit_menu(ui, &response, &mut self.input, false);
 
-                // Submit with the platform shortcut, but never while an input
-                // method is composing text.
-                if !active && !composing(ui) {
-                    let submit = ui.input(|input| {
-                        let enter = input.key_pressed(egui::Key::Enter);
-                        let modifier = if cfg!(target_os = "macos") {
-                            input.modifiers.command
-                        } else {
-                            input.modifiers.ctrl
-                        };
-                        enter && modifier
-                    });
-                    if submit && focused && !self.input.trim().is_empty() {
-                        action = Some(Action::Translate);
-                    }
-                }
+                        // Submit with the platform shortcut, but never while an
+                        // input method is composing text.
+                        if !active && !composing(ui) {
+                            let submit = ui.input(|input| {
+                                let enter = input.key_pressed(egui::Key::Enter);
+                                let modifier = if cfg!(target_os = "macos") {
+                                    input.modifiers.command
+                                } else {
+                                    input.modifiers.ctrl
+                                };
+                                enter && modifier
+                            });
+                            if submit && response.has_focus() && !self.input.trim().is_empty() {
+                                action = Some(Action::Translate);
+                            }
+                        }
+                        response.has_focus()
+                    })
+                    .inner;
 
                 ui.add_space(SPACE_2);
                 ui.horizontal(|ui| {
@@ -248,30 +274,14 @@ impl TranslateView {
     }
 
     /// Result surface and its action row.
+    ///
+    /// The box fills whatever height is left in the panel, so there is no
+    /// dead space under it.
     fn result(&mut self, ui: &mut Ui, app: &mut App, colors: &theme::Palette) -> Option<Action> {
         let mut action = None;
-        let state = app.state().clone();
-        let target = if state.target.is_empty() {
-            self.target_label(app)
-        } else {
-            language_label(&state.target)
-        };
+        let state = app.state();
 
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Translation").color(colors.secondary));
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let color = match state.status {
-                    Status::Failed => colors.destructive,
-                    Status::Complete => colors.success,
-                    Status::Stopped => colors.warning,
-                    _ => colors.secondary,
-                };
-                let status = status_label(&state);
-                ui.label(RichText::new(status).color(color));
-                ui.add_space(SPACE_2);
-                ui.label(RichText::new(target).color(colors.placeholder));
-            });
-        });
+        ui.label(RichText::new("Translation").color(colors.secondary));
         ui.add_space(SPACE_2);
 
         let card = egui::Frame::new()
@@ -280,34 +290,37 @@ impl TranslateView {
             .corner_radius(theme::RADIUS_GROUP)
             .inner_margin(SPACE_3)
             .show(ui, |ui| {
-                let output = if state.output.is_empty() {
-                    "Your translation will appear here.".to_owned()
-                } else {
-                    state.output.clone()
-                };
+                // Reserve the action row so the text area takes the rest.
+                let reserve = theme::CONTROL_HEIGHT + SPACE_2;
+                let height = (ui.available_height() - reserve).max(MIN_RESULT_HEIGHT);
                 let focused = ScrollArea::vertical()
                     .id_salt("translation-output")
-                    .max_height(240.0)
+                    .max_height(height)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         // A `&str` buffer is read-only but still selectable, so
                         // the result can be selected and copied by hand while
                         // remaining uneditable.
-                        let mut text: &str = &output;
+                        let mut text: &str = &state.output;
                         let color = if state.output.is_empty() {
                             colors.placeholder
                         } else {
                             colors.label
                         };
-                        ui.add(
+                        let response = theme::text_edit(
+                            ui,
                             TextEdit::multiline(&mut text)
                                 .id_salt("translation-output-text")
+                                // Fill the box: the whole result surface is one
+                                // text area, not just the lines that hold text.
+                                .min_size(egui::Vec2::new(0.0, height))
                                 .desired_width(f32::INFINITY)
                                 .font(theme::editor_text())
                                 .frame(theme::editor_frame())
                                 .text_color(color),
-                        )
-                        .has_focus()
+                        );
+                        theme::text_edit_menu(ui, &response, &mut text, false);
+                        response.has_focus()
                     })
                     .inner;
 
@@ -337,6 +350,12 @@ impl TranslateView {
     }
 }
 
+/// Height of the input editor's viewport, in points.
+fn editor_height(ui: &Ui) -> f32 {
+    let row = ui.fonts_mut(|fonts| fonts.row_height(&theme::editor_text()));
+    row * EDITOR_ROWS as f32 + 2.0 * SPACE_1
+}
+
 /// Whether an input method is currently composing text.
 ///
 /// A non-empty pre-edit string means the IME is active, so the platform
@@ -350,31 +369,6 @@ fn composing(ui: &Ui) -> bool {
             )
         })
     })
-}
-
-/// Status text for the current request state.
-fn status_label(state: &crate::app::RequestState) -> String {
-    match state.status {
-        Status::Ready => "Ready".to_owned(),
-        Status::Waiting => "Waiting".to_owned(),
-        Status::Receiving => "Receiving".to_owned(),
-        Status::Complete => "Complete".to_owned(),
-        Status::Stopping => "Stopping".to_owned(),
-        Status::Stopped => {
-            if state.message.is_empty() {
-                "Stopped".to_owned()
-            } else {
-                state.message.clone()
-            }
-        }
-        Status::Failed => {
-            if state.message.is_empty() {
-                "Failed".to_owned()
-            } else {
-                state.message.clone()
-            }
-        }
-    }
 }
 
 /// Human-readable name for a language code.
